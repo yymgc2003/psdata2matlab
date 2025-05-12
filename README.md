@@ -1,39 +1,38 @@
-# PsData to MATLAB変換ツール
+# 信号波形データ処理レポジトリ
 
-このツールは、.psdataファイルを.matファイルに一括変換するためのPowerShellスクリプトです。
+このレポジトリは、信号波形データをスクリプト言語で扱えるようにすることを目的としています。Picoscopeで取得した`.psdata`ファイルを`.mat`形式に変換し、MATLABやPythonなどのスクリプト言語で解析できるようにします。
 
-## 必要条件
+## 目的
 
-- Windows PowerShell 5.1以上
-- picoscopeコマンドラインツール
+- `.psdata`ファイルを`.mat`ファイルに変換する
+- Picoscopeではなく、プログラミング環境（Jupyter Notebookなど）でデータを確認・分析できるようにする
+- 波形データの処理を自動化・効率化する
 
-## セットアップ
+## 必要環境
 
-1. PowerShellの実行ポリシーを設定（初回のみ）:
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
+### オペレーティングシステム
+- Windows 10/11（推奨）
+- macOS（一部機能に制限あり）
+- Linux（一部機能に制限あり）
 
-2. スクリプト内の設定を変更:
-- `$INPUT_DIR`: .psdataファイルが保存されているサーバーのパス
-- `$OUTPUT_DIR`: 変換後の.matファイルを保存するディレクトリのパス
+### 必須ソフトウェア
+- **Picoscope 7**：`.psdata`ファイルの生成と変換に必要
+- **PowerShell 5.1以上**：変換スクリプトの実行環境
+- **MATLAB**（R2019b以上推奨）または **Python 3.7以上**：変換後のデータ処理用
+
+### 推奨ソフトウェア
+- **Jupyter Notebook**：対話的なデータ分析用
+- **Git**：バージョン管理用
+
+## インストール方法
+
+1. このレポジトリをクローンまたはダウンロード
+2. PowerShellの実行ポリシーを設定（初回のみ）:
+   ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   ```
+3. 必要に応じて設定ファイルを編集
 
 ## 使用方法
 
-PowerShellを開いて以下のコマンドを実行：
-```powershell
-.\convert_psdata_to_mat.ps1
-```
-
-## 機能
-
-- 指定されたディレクトリ内の全ての.psdataファイルを検索
-- 各ファイルを.matファイルに変換
-- 進捗状況のカラー表示
-- エラーハンドリング
-
-## 注意事項
-
-- 変換先のディレクトリに十分な空き容量があることを確認してください
-- ネットワーク接続が安定していることを確認してください
-- 必要に応じてネットワークドライブのマッピングを行ってください 
+詳細な使用方法は[documents/batchconvert.md](documents/batchconvert.md)を参照してください。
