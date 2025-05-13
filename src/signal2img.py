@@ -149,10 +149,12 @@ def generate_echomap(file_path, start_time=0.444, duration=0.001,
             plt.figure(figsize=(12, 6))
             if len(adjusted_time_us_trimmed) > 0:
                 plt.imshow(hilbert_matrix_trimmed, aspect='auto', cmap='viridis', 
-                        extent=[0, adjusted_time_us_trimmed[-1], n_pulses-0.5, -0.5])
+                        extent=[0, adjusted_time_us_trimmed[-1], n_pulses-0.5, -0.5],
+                        vmin=0, vmax=1)
             else:
                 # 時間軸が空の場合は、デフォルトの範囲でプロット
-                plt.imshow(hilbert_matrix_trimmed, aspect='auto', cmap='viridis')
+                plt.imshow(hilbert_matrix_trimmed, aspect='auto', cmap='viridis',
+                        vmin=0, vmax=1)
             plt.colorbar(label='Amplitude')
             plt.xlabel('Time (μs)')
             plt.ylabel('Pulse Number')
@@ -185,8 +187,8 @@ def generate_echomap(file_path, start_time=0.444, duration=0.001,
             }
             
             # .npy形式で保存
-            #np.save(signal_data_path, signal_data_to_save)
-            #print(f"信号波形データを保存しました: {signal_data_path}")
+            np.save(signal_data_path, signal_data_to_save)
+            print(f"信号波形データを保存しました: {signal_data_path}")
         
         plt.show()
     else:
