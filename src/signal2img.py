@@ -586,3 +586,4 @@ def generate_bin_multi(file_path, channels, start_time=0.444, duration=0.001,
         print(f"Metadata: {metadata}")
     
     return results
+
