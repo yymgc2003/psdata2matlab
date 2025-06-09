@@ -95,7 +95,7 @@ def generate_echomap(file_path, start_time=0.444, duration=0.001,
         triggered_pulses.append(chunk[trigger:trigger + window_samples])
     
     # Remove initial reflection (set 0-55μs signal to 0)
-    neglegible_time = 55e-6  # meaningless time
+    neglegible_time = 5e-6  # meaningless time
     zero_samples = int(neglegible_time * Fs)  # Calculate samples for 55μs
     
     processed_pulses_tensor = all_pulses_tensor.clone()

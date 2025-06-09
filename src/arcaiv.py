@@ -569,7 +569,7 @@ def extract_waveforms_from_trigger_times(file_path, channels, trigger_times,
 def extract_waveforms_with_hilbert(file_path, channels, trigger_times, 
                                  starting_window=-50e-6, ending_window=250e-6, 
                                  neglect_time=55e-6, output_dir=None, savebin=False,
-                                 flow_velocity=6.0):
+                                 flow_velocity=1.0):
     """
     トリガー時刻を起点として、複数チャンネルから指定時間幅の波形を切り出し、
     ヒルベルト変換も適用して縦に並べる処理
@@ -591,7 +591,7 @@ def extract_waveforms_with_hilbert(file_path, channels, trigger_times,
     output_dir : str
         出力ディレクトリ、デフォルトはNone（保存なし）
     flow_velocity : float
-        流速 (m/s)、デフォルト10.0 m/s
+        流速 (m/s)、デフォルト1.0 m/s
     
     Returns:
     --------
