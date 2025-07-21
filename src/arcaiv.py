@@ -338,14 +338,16 @@ def detect_triggers_from_signal(
     # Select trigger points (avoid duplicates)
     trigger_points = []
     last_trigger = -window_samples
-    
+
     for trigger in potential_triggers:
         if trigger > last_trigger + window_samples:
             trigger_points.append(trigger)
             last_trigger = trigger
-    
+
+    trigger_points = np.array(trigger_points)  # listからndarrayに変換
+
     print(f"Number of detected triggers: {len(trigger_points)}")
-    
+
     return trigger_points, chunk, Fs
 
 
