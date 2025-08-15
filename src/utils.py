@@ -212,14 +212,14 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
     data = np.load(file_path)
     processed_data = data["processed_data"]
     fs = data["fs"].item() if hasattr(data["fs"], "item") else float(data["fs"])
-    
+    print(processed_data.shape)
     # full=Trueの場合は全パルスを画像化
     if full:
         # processed_dataのshape: (n_pulses, n_samples, n_channels)
         # 指定チャンネルの全パルスを抽出
-        if processed_data.ndim == 3:
-            img_data = processed_data[:, :, channel_index]
-        elif processed_data.ndim == 2:
+        if processed_data.ndim == 4:
+            img_data = processed_data[:, :, channel_index,0]
+        elif processed_data.ndim == 3:
             img_data = processed_data  # (n_pulses, n_samples)
         else:
             raise ValueError("processed_data shape is not supported.")
@@ -276,8 +276,9 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
         img_data_torch_abs = torch.abs(analytic_signal)
         # CPUに戻してnumpy配列に変換
         img_data = img_data_torch_abs.cpu().numpy()
+        #print(img_data.shape)
         t = t[start_idx:end_idx]
-
+        #print(t.shape)
 
         
         # 画像として保存
@@ -297,10 +298,10 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
         plt.close()
     else:
         # full=Falseの場合は指定パルスのみをプロット
-        if processed_data.ndim == 3:
-            pulse = processed_data[pulse_index, :, channel_index]
-        elif processed_data.ndim == 2:
-            pulse = processed_data[pulse_index, :]
+        if processed_data.ndim == 4:
+            pulse = processed_data[pulse_index, :, channel_index,0]
+        elif processed_data.ndim == 3:
+            pulse = processed_data[pulse_index, :,0]
         else:
             raise ValueError("processed_data shape is not supported.")
         n_samples = len(pulse)

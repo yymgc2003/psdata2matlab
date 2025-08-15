@@ -99,6 +99,8 @@ def detect_triggers_from_signal(
 
 def arrange_trigger_points(trigger_points, window_width, signal_chunk, fs):
     trigger_points = np.array(trigger_points)
+    #print(f"trigger_points.shape: {trigger_points.shape}")
+    #print(f"signal_chunk.shape: {signal_chunk.shape}")
     window_samples = int(window_width * fs)
     triggered_pulses = []
     for trigger in trigger_points:
@@ -107,6 +109,8 @@ def arrange_trigger_points(trigger_points, window_width, signal_chunk, fs):
             triggered_pulses.append(pulse)
     triggered_pulses = np.array(triggered_pulses)
     #print(triggered_pulses.shape)
+    #print(triggered_pulses[1,3000])
+    #print(f"triggered_pulses.shape: {triggered_pulses.shape}")
     return triggered_pulses
 
 def convert_mat2npy(file_path,start_time,duration,amplitude_threshold,window_width,signal_key):
@@ -127,6 +131,7 @@ def convert_mat2npy(file_path,start_time,duration,amplitude_threshold,window_wid
     mat_data = sio.loadmat(file_path)
     #signal_chunk=np.squeeze(mat_data)
     #print(signal_chunk.shape)
+    #print(mat_data['TDX1'])
     #print(mat_data['TDX1'].shape)
     #print(mat_data['TDX1_enlarged'].shape)
     arranged_pulses_tdx1 = arrange_trigger_points(triggers, window_width, mat_data['TDX1'], fs)
