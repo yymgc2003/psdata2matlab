@@ -140,3 +140,6 @@ def convert_mat2npy(file_path,start_time,duration,amplitude_threshold,window_wid
     arranged_pulses = np.stack((arranged_pulses_tdx1, arranged_pulses_tdx2, arranged_pulses_tdx3, arranged_pulses_tdx1_enlarged), axis=2)
     print(f"arranged_pulses.shape: {arranged_pulses.shape}")
     return arranged_pulses,fs
+
+#def convert_mat2npy_simulation(file_path,start_time,duration,amplitude_threshold,window_width,signal_key):
+    
