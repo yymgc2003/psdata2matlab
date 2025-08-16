@@ -4,6 +4,8 @@ import os
 from pprint import pprint
 import matplotlib.pyplot as plt
 import h5py
+import json
+import math
 def analyze_mat_file(file_path):
     """
     Load a .mat file and print all metadata
@@ -72,7 +74,6 @@ def analyze_mat_file(file_path):
         if not key.startswith('__'):
             print(f"\nStructure of: {key}")
             inspect_structure(mat_data[key])
-
 def inspect_structure(obj, depth=0, max_depth=3):
     """
     Recursively inspect nested structures within a MATLAB object
@@ -106,8 +107,6 @@ def inspect_structure(obj, depth=0, max_depth=3):
     
     else:
         print(f"{prefix}Value: {type(obj)}")
-
-
 def plot_signal_waveform(file_path, start_ms=0, end_ms=100):
     """
     Display signal waveform from .mat file
@@ -217,9 +216,9 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
     if full:
         # processed_dataのshape: (n_pulses, n_samples, n_channels)
         # 指定チャンネルの全パルスを抽出
-        if processed_data.ndim == 4:
-            img_data = processed_data[:, :, channel_index,0]
-        elif processed_data.ndim == 3:
+        if processed_data.ndim == 3:
+            img_data = processed_data[:, :, channel_index]
+        elif processed_data.ndim == 2:
             img_data = processed_data  # (n_pulses, n_samples)
         else:
             raise ValueError("processed_data shape is not supported.")
@@ -290,18 +289,17 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
         plt.title('All Pulses (Channel {})'.format(channel_index))
         plt.tight_layout()
         import os
-        base = os.path.dirname(save_path)
         base_name = os.path.splitext(os.path.basename(file_path))[0]
-        new_save_path = os.path.join(base, f"{base_name}_{channel_index}img.png")
+        new_save_path = os.path.join(save_path, f"{base_name}_{channel_index}img.png")
         print(new_save_path)
         plt.savefig(new_save_path)
         plt.close()
     else:
         # full=Falseの場合は指定パルスのみをプロット
-        if processed_data.ndim == 4:
-            pulse = processed_data[pulse_index, :, channel_index,0]
-        elif processed_data.ndim == 3:
-            pulse = processed_data[pulse_index, :,0]
+        if processed_data.ndim == 3:
+            pulse = processed_data[pulse_index, :, channel_index]
+        elif processed_data.ndim == 2:
+            pulse = processed_data[pulse_index, :]
         else:
             raise ValueError("processed_data shape is not supported.")
         n_samples = len(pulse)
@@ -317,7 +315,7 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
         # Apply Hilbert transform to the pulse to obtain its analytic signal
         # The absolute value of the analytic signal gives the envelope of the pulse
         from scipy.signal import hilbert
-        neglegible_time = 3e-6 # 3μss
+        neglegible_time = 3e-6 # 3μs
         zero_samples = int(neglegible_time * fs)
         pulse[:zero_samples] = 0
         analytic_pulse = np.abs(hilbert(pulse))
@@ -331,16 +329,13 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
         plt.title('Pulse {} (Channel {})'.format(pulse_index, channel_index))
         plt.tight_layout()
         import os
-        base = os.path.dirname(save_path)
+        #base = os.path.dirname(save_path)
         base_name = os.path.splitext(os.path.basename(file_path))[0]
         channel=channel_index
-        new_save_path = os.path.join(base, f"{base_name}_{channel}pulse.png")
+        new_save_path = os.path.join(save_path, f"{base_name}_{channel}pulse.png")
         print(new_save_path)
         plt.savefig(new_save_path)
         plt.close()
-
-
-
 def analyze_mat_file_h5py(file_path):
     """
     Display metadata of a MATLAB v7.3 (HDF5-based) .mat file using h5py.
@@ -369,3 +364,42 @@ def analyze_mat_file_h5py(file_path):
             print(f"  {key}")
         print("\nFull structure and attributes:")
         f.visititems(print_attrs)
+
+
+def calculate_gvf_and_signal(config_path, npz_path):
+    """
+    Calculate the gas volume fraction (GVF) and extract the signal from the given files.
+
+    Parameters
+    ----------
+    config_path : str
+        Path to the config.json file.
+    npz_path : str
+        Path to the processed .npz file.
+
+    Returns
+    -------
+    input_tmp : np.ndarray
+        The extracted signal (1D array).
+    target_tmp : float
+        The calculated gas volume fraction (GVF).
+    """
+    with open(config_path, "r") as f:
+        config = json.load(f)
+        num = config["simulation"]["num_particles"]
+        r_ball = config["simulation"]["glass_radius"] * 1e3  # Convert to mm
+        r_pipe = config["pipe"]["inner_radius"]
+        surface = math.pi * (r_pipe ** 2)
+        height = config["grid"]["Nz"] * config["grid"]["dz"] * 1e3  # Convert to mm
+        ball = 4 * math.pi * r_ball ** 3 / 3
+        v_sphere = num * ball
+        v_pipe = surface * height
+
+    signal = np.load(npz_path)['processed_data']
+    signal_tdx1 = signal[0, :, 0]
+    gvf = v_sphere / v_pipe
+    #print(f"gvf: {gvf}")
+    #print(f"signal_tdx1: {signal_tdx1.shape}")
+    input_tmp = signal_tdx1
+    target_tmp = gvf
+    return input_tmp, target_tmp
