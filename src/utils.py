@@ -278,11 +278,12 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
         #print(img_data.shape)
         t = t[start_idx:end_idx]
         #print(t.shape)
-
+        #print(np.max(img_data),np.min(img_data))
         
-        # 画像として保存
+        
         plt.figure(figsize=(10, 4))
-        plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0]*1e6, t[-1]*1e6, img_data.shape[0]-0.5, -0.5])
+        plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0]*1e6, t[-1]*1e6, img_data.shape[0]-0.5, -0.5],vmin=0,vmax=1)
+        #plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0], t[-1], img_data.shape[0]-0.5, -0.5])
         plt.colorbar(label='Amplitude')
         plt.xlabel('Time (μs)')
         plt.ylabel('Pulse Number')
@@ -402,4 +403,9 @@ def calculate_gvf_and_signal(config_path, npz_path):
     #print(f"signal_tdx1: {signal_tdx1.shape}")
     input_tmp = signal_tdx1
     target_tmp = gvf
+    if target_tmp < 0.0008:
+        print(f"case:{config_path}")
+        print(f"ball:{ball}")
+        print(f"v_pipe:{v_pipe}")
+        print(f"gvf:{gvf}")
     return input_tmp, target_tmp

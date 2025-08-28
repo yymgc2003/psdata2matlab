@@ -147,16 +147,26 @@ def convert_exp(file_path,start_time,duration,amplitude_threshold,window_width,s
     #print(mat_data['TDX1'])
     #print(mat_data['TDX1'].shape)
     #print(mat_data['TDX1_enlarged'].shape)
+    if np.isinf(mat_data['TDX1']).any():
+        print("Warning: arranged_pulses contains inf values. Replacing infs with 0.")
+        mat_data['TDX1'] = np.nan_to_num(mat_data['TDX1'], nan=0.0)
+    if np.isnan(mat_data['TDX1']).any():
+        print("Warning: arranged_pulses contains nan values. Replacing nans with 0.")
+        mat_data['TDX1'] = np.nan_to_num(mat_data['TDX1'], nan=0.0)
+    #print(f"max: {np.max(mat_data['TDX1'])}")
+    #print(f"min: {np.min(mat_data['TDX1'])}")
     arranged_pulses_tdx1 = arrange_trigger_points(triggers, window_width, mat_data['TDX1'], fs)
-    print(f"arranged_pulses_tdx1.shape: {arranged_pulses_tdx1.shape}")
+    #print(f"arranged_pulses_tdx1.shape: {arranged_pulses_tdx1.shape}")
     arranged_pulses_tdx2 = arrange_trigger_points(triggers, window_width, mat_data['TDX2'], fs)
     #print(f"arranged_pulses_tdx2.shape: {arranged_pulses_tdx2.shape}")  
     arranged_pulses_tdx3 = arrange_trigger_points(triggers, window_width, mat_data['TDX3'], fs)
     #print(f"arranged_pulses_tdx3.shape: {arranged_pulses_tdx3.shape}")  
     arranged_pulses_tdx1_enlarged = arrange_trigger_points(triggers, window_width, mat_data['TDX1_enlarged'], fs)
-    print(f"arranged_pulses_tdx1_enlarged.shape: {arranged_pulses_tdx1_enlarged.shape}")  
+    #print(f"arranged_pulses_tdx1_enlarged.shape: {arranged_pulses_tdx1_enlarged.shape}")  
     arranged_pulses = np.stack((arranged_pulses_tdx1, arranged_pulses_tdx2, arranged_pulses_tdx3, arranged_pulses_tdx1_enlarged), axis=2)
     print(f"arranged_pulses.shape: {arranged_pulses.shape}")
+    
+    print(np.max(arranged_pulses))
     return arranged_pulses,fs
 def mat2npz_sim(file_path, config_path, output_dir):
     """
@@ -224,7 +234,7 @@ def mat2npz_sim(file_path, config_path, output_dir):
     # [number of measurements, sensor values, sensor index, (optional) vertical vector]
     # Todo: implement scan_line function of kwave
     processed_data = sensor_data[np.newaxis, :, 15, np.newaxis]
-
+    processed_data=processed_data[:,50001:,:]
     print(processed_data[0, :, 0].shape)  # Confirm the shape of the signal values
 
     # Prepare dictionary for saving
@@ -267,7 +277,7 @@ def mat2npz_exp(file_path, output_dir, start_time=0.0, duration=5.0, amplitude_t
         Path to the saved .npz file.
     """
     # Convert the experimental data using convert_exp
-    processed_data, fs = convert_exp(
+    raw_data, fs = convert_exp(
         file_path,
         start_time=start_time,
         duration=duration,
@@ -275,7 +285,29 @@ def mat2npz_exp(file_path, output_dir, start_time=0.0, duration=5.0, amplitude_t
         window_width=window_width,
         signal_key=signal_key
     )
-    # Load the .mat file to get the original keys
+    processed_data=raw_data[:,2708:,:]
+    print(f"processed_data.shape: {processed_data.shape}")
+    # English comment: Check for NaN values and replace them with 0 to avoid np.max returning nan
+    if np.isnan(processed_data).any():
+        print("Warning: processed_data contains NaN values. Replacing NaNs with 0.")
+        processed_data = np.nan_to_num(processed_data, nan=0.0)
+    if np.isinf(processed_data).any():
+        print("Warning: processed_data contains inf values. Replacing infs with 0.")
+        processed_data = np.nan_to_num(processed_data, nan=0.0)
+    # English comment: Compute the maximum value per sample (across channels)
+    max_per_sample = np.max(processed_data, axis=1, keepdims=True)
+    print(max_per_sample.shape, np.min(max_per_sample),np.max(max_per_sample))
+    # English comment: Avoid division by zero by setting zero max values to 1.0
+    max_per_sample[max_per_sample == 0] = 1.0
+    print(processed_data.shape,np.min(processed_data),np.max(processed_data))
+    processed_data = processed_data / max_per_sample
+
+    # English comment: After NaN replacement, np.max(processed_data) should not be nan
+    max_value = np.max(processed_data)
+    if np.isnan(max_value):
+        print("Error: np.max(processed_data) is still NaN after NaN replacement.")
+    else:
+        print(f"max_value: {max_value}")
     mat_data = sio.loadmat(file_path)
     keys = list(mat_data.keys())
     # Print the keys for inspection
