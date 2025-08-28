@@ -32,7 +32,7 @@
    ```
    （shellscript作成予定）
 
-- mat to npz,npy
+- mat to npz,npy　　
    このレポジトリを
    ```
    git clone https://github.com/apetrasc/psdata2matlab.git
