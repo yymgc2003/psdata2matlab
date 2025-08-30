@@ -5,7 +5,7 @@ from typing import List, Tuple, Optional
 import os
 import json
 import h5py
-
+from scipy.signal import hilbert
 def detect_triggers_from_signal(
     file_path: str,
     start_time: float,
@@ -166,7 +166,7 @@ def convert_exp(file_path,start_time,duration,amplitude_threshold,window_width,s
     arranged_pulses = np.stack((arranged_pulses_tdx1, arranged_pulses_tdx2, arranged_pulses_tdx3, arranged_pulses_tdx1_enlarged), axis=2)
     print(f"arranged_pulses.shape: {arranged_pulses.shape}")
     
-    print(np.max(arranged_pulses))
+    #print(np.max(arranged_pulses))
     return arranged_pulses,fs
 def mat2npz_sim(file_path, config_path, output_dir):
     """
@@ -235,6 +235,8 @@ def mat2npz_sim(file_path, config_path, output_dir):
     # Todo: implement scan_line function of kwave
     processed_data = sensor_data[np.newaxis, :, 15, np.newaxis]
     processed_data=processed_data[:,50001:,:]
+    #processed_data=np.abs(hilbert(processed_data[:,50001:,:]))
+    #processed_data=processed_data[::20]
     print(processed_data[0, :, 0].shape)  # Confirm the shape of the signal values
 
     # Prepare dictionary for saving
@@ -294,15 +296,12 @@ def mat2npz_exp(file_path, output_dir, start_time=0.0, duration=5.0, amplitude_t
     if np.isinf(processed_data).any():
         print("Warning: processed_data contains inf values. Replacing infs with 0.")
         processed_data = np.nan_to_num(processed_data, nan=0.0)
-    # English comment: Compute the maximum value per sample (across channels)
     max_per_sample = np.max(processed_data, axis=1, keepdims=True)
     print(max_per_sample.shape, np.min(max_per_sample),np.max(max_per_sample))
-    # English comment: Avoid division by zero by setting zero max values to 1.0
     max_per_sample[max_per_sample == 0] = 1.0
     print(processed_data.shape,np.min(processed_data),np.max(processed_data))
-    processed_data = processed_data / max_per_sample
+    #processed_data = processed_data / max_per_sample
 
-    # English comment: After NaN replacement, np.max(processed_data) should not be nan
     max_value = np.max(processed_data)
     if np.isnan(max_value):
         print("Error: np.max(processed_data) is still NaN after NaN replacement.")

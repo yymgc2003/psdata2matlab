@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import h5py
 import json
 import math
+from scipy.signal import hilbert
 def analyze_mat_file(file_path):
     """
     Load a .mat file and print all metadata
@@ -211,7 +212,7 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
     data = np.load(file_path)
     processed_data = data["processed_data"]
     fs = data["fs"].item() if hasattr(data["fs"], "item") else float(data["fs"])
-    print(processed_data.shape)
+    print(f"processed_data.shape:{processed_data.shape}")
     # full=Trueの場合は全パルスを画像化
     if full:
         # processed_dataのshape: (n_pulses, n_samples, n_channels)
@@ -282,7 +283,8 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
         
         
         plt.figure(figsize=(10, 4))
-        plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0]*1e6, t[-1]*1e6, img_data.shape[0]-0.5, -0.5],vmin=0,vmax=1)
+        #plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0]*1e6, t[-1]*1e6, img_data.shape[0]-0.5, -0.5],vmin=0,vmax=1)
+        plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0]*1e6, t[-1]*1e6, img_data.shape[0]-0.5, -0.5])
         #plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0], t[-1], img_data.shape[0]-0.5, -0.5])
         plt.colorbar(label='Amplitude')
         plt.xlabel('Time (μs)')
@@ -402,6 +404,7 @@ def calculate_gvf_and_signal(config_path, npz_path):
     #print(f"gvf: {gvf}")
     #print(f"signal_tdx1: {signal_tdx1.shape}")
     input_tmp = signal_tdx1
+    input_tmp = np.abs(hilbert(input_tmp))[::20]
     target_tmp = gvf
     if target_tmp < 0.0008:
         print(f"case:{config_path}")
