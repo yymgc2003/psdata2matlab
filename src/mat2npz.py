@@ -287,8 +287,11 @@ def mat2npz_exp(file_path, output_dir, start_time=0.0, duration=5.0, amplitude_t
         window_width=window_width,
         signal_key=signal_key
     )
-    processed_data=raw_data[:,2708:,:]
+    print("convert_exp finished")
+    print(f"max: {np.max(raw_data)}")
+    processed_data=raw_data[100:14100,2708:,:]
     print(f"processed_data.shape: {processed_data.shape}")
+    print(f"max: {np.max(processed_data)}")
     # English comment: Check for NaN values and replace them with 0 to avoid np.max returning nan
     if np.isnan(processed_data).any():
         print("Warning: processed_data contains NaN values. Replacing NaNs with 0.")
@@ -296,10 +299,15 @@ def mat2npz_exp(file_path, output_dir, start_time=0.0, duration=5.0, amplitude_t
     if np.isinf(processed_data).any():
         print("Warning: processed_data contains inf values. Replacing infs with 0.")
         processed_data = np.nan_to_num(processed_data, nan=0.0)
+    i=0
+    print(f"processed_data[{i},:,0].shape: {processed_data[i,:,0].shape}")
+    print(f"max: {np.max(processed_data[i,:,0])}")
+    print(f"argmax: {np.argmax(processed_data[i,:,0])}")
     max_per_sample = np.max(processed_data, axis=1, keepdims=True)
+    print(f"maxes argmax: {np.argmax(max_per_sample)},max: {np.max(max_per_sample)}")
     print(max_per_sample.shape, np.min(max_per_sample),np.max(max_per_sample))
     max_per_sample[max_per_sample == 0] = 1.0
-    print(processed_data.shape,np.min(processed_data),np.max(processed_data))
+    print(f"scaled: {processed_data.shape,np.min(processed_data),np.max(processed_data)}")
     #processed_data = processed_data / max_per_sample
 
     max_value = np.max(processed_data)
@@ -327,3 +335,4 @@ def mat2npz_exp(file_path, output_dir, start_time=0.0, duration=5.0, amplitude_t
     np.savez(save_path, **save_dict)
     print(f"Processed data and metadata saved to: {save_path}")
     return save_path
+

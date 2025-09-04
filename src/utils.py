@@ -7,6 +7,48 @@ import h5py
 import json
 import math
 from scipy.signal import hilbert
+import torch
+def hilbert_cuda(img_data_torch, device):
+            """
+            Compute the Hilbert envelope of input data using torch (GPU/CPU).
+
+            Parameters
+            ----------
+            img_data_torch : torch.Tensor
+                Input data of shape (n_pulses, n_samples), float32.
+            device : torch.device
+                Device to perform computation on.
+
+            Returns
+            -------
+            np.ndarray
+                Envelope of the analytic signal, shape (n_pulses, n_samples).
+            """
+            n_samples = img_data_torch.shape[1]
+            # Create the Hilbert transformer in the frequency domain
+            h = torch.zeros(n_samples, dtype=torch.complex64, device=device)
+            if n_samples % 2 == 0:
+                # Even length
+                h[0] = 1
+                h[1:n_samples//2] = 2
+                h[n_samples//2] = 1
+                # The rest remain zero
+            else:
+                # Odd length
+                h[0] = 1
+                h[1:(n_samples+1)//2] = 2
+                # The rest remain zero
+
+            # FFT along the time axis
+            Xf = torch.fft.fft(img_data_torch, dim=1)
+            # Apply the Hilbert transformer
+            Xf = Xf * h
+            # IFFT to get the analytic signal
+            analytic_signal = torch.fft.ifft(Xf, dim=1)
+            # Take the amplitude envelope
+            img_data_torch_abs = torch.abs(analytic_signal)
+            # Move to CPU and convert to numpy array
+            return img_data_torch_abs.cpu().numpy()
 def analyze_mat_file(file_path):
     """
     Load a .mat file and print all metadata
@@ -212,7 +254,7 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
     data = np.load(file_path)
     processed_data = data["processed_data"]
     fs = data["fs"].item() if hasattr(data["fs"], "item") else float(data["fs"])
-    print(f"processed_data.shape:{processed_data.shape}")
+    #print(f"processed_data.shape:{processed_data.shape}")
     # full=Trueの場合は全パルスを画像化
     if full:
         # processed_dataのshape: (n_pulses, n_samples, n_channels)
@@ -246,36 +288,15 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
         # GPUにデータを転送
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         img_data_torch = torch.from_numpy(img_data).float().to(device)
-        print(f"device: {device}")
+        #print(f"device: {device}")
         # 初期部分を0にする
         if zero_samples > 0:
             img_data_torch[:, :zero_samples] = 0
 
         # ヒルベルト変換のためのハイライザー（周波数領域での乗数）を作成
         n_samples = img_data_torch.shape[1]
-        h = torch.zeros(n_samples, dtype=torch.complex64, device=device)
-        if n_samples % 2 == 0:
-            # 偶数長
-            h[0] = 1
-            h[1:n_samples//2] = 2
-            h[n_samples//2] = 1
-            # それ以降は0
-        else:
-            # 奇数長
-            h[0] = 1
-            h[1:(n_samples+1)//2] = 2
-            # それ以降は0
 
-        # FFT
-        Xf = torch.fft.fft(img_data_torch, dim=1)
-        # ハイライザーを掛ける
-        Xf = Xf * h
-        # IFFT
-        analytic_signal = torch.fft.ifft(Xf, dim=1)
-        # 振幅包絡を取得
-        img_data_torch_abs = torch.abs(analytic_signal)
-        # CPUに戻してnumpy配列に変換
-        img_data = img_data_torch_abs.cpu().numpy()
+        img_data = hilbert_cuda(img_data_torch, device)
         #print(img_data.shape)
         t = t[start_idx:end_idx]
         #print(t.shape)
@@ -322,6 +343,7 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
         zero_samples = int(neglegible_time * fs)
         pulse[:zero_samples] = 0
         analytic_pulse = np.abs(hilbert(pulse))
+        #analytic_pulse = np.log1p(analytic_pulse)
         #print(pulse) 
         plt.figure(figsize=(10, 4))
         plt.plot(t*1e6, analytic_pulse, color='red', label='Envelope')
@@ -367,8 +389,6 @@ def analyze_mat_file_h5py(file_path):
             print(f"  {key}")
         print("\nFull structure and attributes:")
         f.visititems(print_attrs)
-
-
 def calculate_gvf_and_signal(config_path, npz_path):
     """
     Calculate the gas volume fraction (GVF) and extract the signal from the given files.
@@ -412,3 +432,78 @@ def calculate_gvf_and_signal(config_path, npz_path):
         print(f"v_pipe:{v_pipe}")
         print(f"gvf:{gvf}")
     return input_tmp, target_tmp
+def preprocess_and_predict(path, model, plot_index=80, device='cuda:0'):
+    """
+    Loads data from the given path, applies Hilbert transform and normalization,
+    and runs prediction using the provided model.
+
+    Args:
+        path (str): Path to the .npz file containing 'processed_data'.
+        model (torch.nn.Module): Trained PyTorch model for prediction.
+        plot_index (int): Index of the sample to plot.
+        device (str): Device to run the model on.
+
+    Returns:
+        torch.Tensor: Model predictions.
+    """
+    import numpy as np
+    import torch
+    from scipy.signal import hilbert
+    import matplotlib.pyplot as plt
+
+    # Load and preprocess data
+    x_raw = np.load(path)["processed_data"][:,:,0]
+    print(x_raw.shape)
+    #npz2png(file_path=path,save_path=output_folder_path,full=False,pulse_index=1)
+    #npz2png(file_path=path,save_path=output_folder_path,full=True,pulse_index=2)
+    print(f"max: {np.max(x_raw)}")
+    #x_test = np.abs(hilbert(x_raw))
+    x_raw_torch = torch.from_numpy(x_raw).float()
+    x_raw_torch = x_raw_torch.to(device)
+    x_test = hilbert_cuda(x_raw_torch,device)
+    print(f"max: {np.max(x_test)}")
+    if np.isnan(x_test).any():
+        print("nan")
+        x_test = np.nan_to_num(x_test)
+    x_test_tensor = torch.from_numpy(x_test).float()
+
+    # Add channel dimension: (batch, 1, length, channel)
+    x_test_tensor_all = x_test_tensor.unsqueeze(1)
+    print(x_test_tensor_all.shape)
+    # Normalize each (length, channel) column for each sample in the batch
+    max_values_per_column = torch.max(x_test_tensor_all, dim=2, keepdim=True)[0]
+    print(f"max_values_per_column.shape: {max_values_per_column.shape}")
+    max_values_per_column[max_values_per_column == 0] = 1.0  # Prevent division by zero
+    x_test_tensor_all = x_test_tensor_all / max_values_per_column
+    #print(f"max: {torch.max(x_test_tensor_all)}")
+
+    # Use only the first channel for CNN input
+    x_test_tensor_cnn = x_test_tensor_all[:, :, :]
+    x_test_tensor_cnn = x_test_tensor_cnn.to(device)
+    x_test_tensor_cnn = torch.log1p(x_test_tensor_cnn)
+    #print(x_test_tensor.shape)
+    print(x_test_tensor_cnn.shape)
+    print(f"max: {torch.max(x_test_tensor_cnn)}")
+    #print(x_test_tensor_cnn)
+    # Plot a sample signal
+    plt.figure(figsize=(10, 4))
+    plt.plot(x_test_tensor_cnn[5, 0,:].cpu().numpy())
+    plt.title("x_test_tensor_cnn Signal")
+    plt.xlabel("sample Index")
+    plt.ylabel("Value")
+    plt.grid(True)
+    plt.show()
+    print(x_test_tensor_cnn[plot_index,0,:].shape)
+    # Model prediction
+    model.eval()
+    with torch.no_grad():
+        x_test_tensor_cnn = x_test_tensor_cnn.to(device)
+        predictions = model(x_test_tensor_cnn)
+        mean, var = torch.mean(predictions), torch.var(predictions)
+        print(f"predictions.shape: {predictions.shape}")
+        print(predictions)
+        print(torch.mean(predictions), torch.var(predictions))
+        # Release memory after computation
+        del predictions
+        torch.cuda.empty_cache()
+    return mean, var

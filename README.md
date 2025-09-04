@@ -21,8 +21,8 @@
 ### 必須ソフトウェア
 - **Picoscope 7**：`.psdata`ファイルの生成と変換に必要
 - **PowerShell 5.1以上**：変換スクリプトの実行環境
-- **MATLAB**（R2019b以上推奨）または **Python 3.7以上**：変換後のデータ処理用
-- **python** (3.8以上が望ましい)
+- **MATLAB**（R2019b以上推奨）：変換後のデータ処理用
+- **python** (3.8以上が望ましい) : 機械学習テスト用
 
 ## 実行方法
 - picoscope to mat  
@@ -37,4 +37,10 @@
    ```
    git clone https://github.com/apetrasc/psdata2matlab.git
    ```
-   でクローンしてアクセス、そのあと`src`ディレクトリの中にある`mat2npz.py`を使って変換してください。使用例は`main.ipynb`に記載してあります。
+   でクローンしてアクセス、そのあと`src`ディレクトリの中にある`mat2npz.py`を使って変換してください。使用例は`main.ipynb`に記載してあります。初期設定として
+   ```
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirement.txt
+   ```
+   をターミナル上で実行してください。
