@@ -225,7 +225,7 @@ def plot_signal_waveform(file_path, start_ms=0, end_ms=100):
     
     plt.tight_layout()
     plt.show()
-def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None, full=True, pulse_index=0):    
+def npz2png(file_path, save_path, channel_index=0, start_time=0.0, end_time=None, full=True, pulse_index=0):    
     """
     Convert processed .npz signal data to PNG image.
     
@@ -260,9 +260,13 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
         # processed_dataのshape: (n_pulses, n_samples, n_channels)
         # 指定チャンネルの全パルスを抽出
         if processed_data.ndim == 3:
+            # Check if the channel_index is within the valid range
+            if channel_index < 0 or channel_index >= processed_data.shape[2]:
+                raise IndexError(f"channel_index {channel_index} is out of bounds for axis 2 with size {processed_data.shape[2]}")
             img_data = processed_data[:, :, channel_index]
         elif processed_data.ndim == 2:
             img_data = processed_data  # (n_pulses, n_samples)
+        # If processed_data has other dimensions, raise an error
         else:
             raise ValueError("processed_data shape is not supported.")
         
@@ -322,6 +326,7 @@ def npz2png(file_path, save_path, channel_index=1, start_time=0.0, end_time=None
         # full=Falseの場合は指定パルスのみをプロット
         if processed_data.ndim == 3:
             pulse = processed_data[pulse_index, :, channel_index]
+           
         elif processed_data.ndim == 2:
             pulse = processed_data[pulse_index, :]
         else:
