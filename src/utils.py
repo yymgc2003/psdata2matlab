@@ -254,7 +254,7 @@ def npz2png(file_path, save_path, channel_index=0, start_time=0.0, end_time=None
     data = np.load(file_path)
     processed_data = data["processed_data"]
     fs = data["fs"].item() if hasattr(data["fs"], "item") else float(data["fs"])
-    #print(f"processed_data.shape:{processed_data.shape}")
+    print(f"processed_data.shape:{processed_data.shape}")
     # full=Trueの場合は全パルスを画像化
     if full:
         # processed_dataのshape: (n_pulses, n_samples, n_channels)
@@ -324,6 +324,7 @@ def npz2png(file_path, save_path, channel_index=0, start_time=0.0, end_time=None
         plt.close()
     else:
         # full=Falseの場合は指定パルスのみをプロット
+        print(f'processed_data.ndim = {processed_data.ndim}')
         if processed_data.ndim == 3:
             pulse = processed_data[pulse_index, :, channel_index]
            
@@ -415,28 +416,36 @@ def calculate_gvf_and_signal(config_path, npz_path):
     with open(config_path, "r") as f:
         config = json.load(f)
         num = config["simulation"]["num_particles"]
-        r_ball = config["simulation"]["glass_radius"] * 1e3  # Convert to mm
+        r_ball = config["simulation"]["glass_radius"] 
         r_pipe = config["pipe"]["inner_radius"]
         surface = math.pi * (r_pipe ** 2)
-        height = config["grid"]["Nz"] * config["grid"]["dz"] * 1e3  # Convert to mm
-        ball = 4 * math.pi * r_ball ** 3 / 3
+        height = config["grid"]["Nz"] * config["grid"]["dz"] 
+        ball = 4 * r_ball**3 * math.pi /3
         v_sphere = num * ball
         v_pipe = surface * height
 
     signal = np.load(npz_path)['processed_data']
+    #print(f'shape of signal:{np.shape(signal)}') 1*75000*1
     signal_tdx1 = signal[0, :, 0]
     gvf = v_sphere / v_pipe
     #print(f"gvf: {gvf}")
     #print(f"signal_tdx1: {signal_tdx1.shape}")
     input_tmp = signal_tdx1
-    input_tmp = np.abs(hilbert(input_tmp))[::20]
+    input_tmp_size = np.shape(input_tmp)[0]
+    input_index_list = list(range(2500))
+    for i in range(2500):
+        input_index_list[i] = int(input_tmp_size/2500*i)
+    #print(f'input_index_list: {input_index_list}')
+    input_tmp= np.abs(hilbert(input_tmp))
+    input_tmp_new2 =  [input_tmp[i] for i in input_index_list]#計2500になるようにデータを取得
+    #print(f'input_tmp: {input_tmp[1200]}')
     target_tmp = gvf
     if target_tmp < 0.0008:
         print(f"case:{config_path}")
         print(f"ball:{ball}")
         print(f"v_pipe:{v_pipe}")
         print(f"gvf:{gvf}")
-    return input_tmp, target_tmp
+    return input_tmp_new2, target_tmp
 def preprocess_and_predict(path, model, plot_index=80, device='cuda:0'):
     """
     Loads data from the given path, applies Hilbert transform and normalization,
@@ -512,3 +521,48 @@ def preprocess_and_predict(path, model, plot_index=80, device='cuda:0'):
         del predictions
         torch.cuda.empty_cache()
     return mean, var
+
+def ndarr2npz(processed_data, fs, save_dir, file_name):
+    import numpy as np
+    import os
+    save_dict = {
+        "processed_data": processed_data,
+        "fs": fs
+    }
+    save_path = os.path.join(save_dir, file_name)
+    np.savez(save_path, **save_dict)
+    print(f"Processed data and metadata saved to: {save_path}")
+    return save_path
+
+def add_noise_to_dataset(x_train, noise_type="white"):
+    import numpy as np
+    #x_trainに関して、50usを2500要素に分割しているのを前提としている
+    x_train_new = np.copy(x_train)
+    size_arr = x_train.shape[0]
+    rng = np.random.default_rng()
+    x_max = np.max(x_train)
+    #print(f'x_train max: {x_max}')
+    if noise_type == "white":
+        noise = rng.normal(loc=0, scale=x_max/100, size=size_arr)
+    if noise_type == "pink":
+        noise_tmp = rng.normal(loc=0, scale=x_max/10, size=size_arr)
+        S = np.fft.rfft(noise_tmp)
+        #print(f'size: {np.size(S)}')
+        fil = 1 / (np.arange(len(S))+1)
+        S = S * fil
+        noise = np.fft.irfft(S)
+        #print(f'size: {np.size(noise)}')
+    x_train_new += noise
+    return x_train_new
+
+def rolling_window_signal(signal_input, window_size=10, 
+                          padding=5, sampling_freq=50e6): 
+    #signal_input: 1*2500
+    dt = 1/sampling_freq
+    t_end = np.shape(signal_input)[0] * dt
+    max_index = np.argmax(signal_input) #これが管壁の一つ目の反射になるはず
+    max_index -= int(1e-6/dt)
+    #左端と右端で32mm=約40usの差があるのでこれをもとにその範囲を取り出す
+    pipe_length_second = 40e-6
+    last_index = int(pipe_length_second / dt)
+    

@@ -195,10 +195,10 @@ def mat2npz_sim(file_path, config_path, output_dir):
         config = json.load(f)
 
     # Open the .mat (HDF5) file and inspect structure
-    with h5py.File(file_path, 'r') as g:
-        z_group = g['#refs#/z']
-        print(g.keys())  # Print top-level keys for inspection
-        print(list(z_group.keys()))  # Print keys in z group
+    #with h5py.File(file_path, 'r') as g:
+    #    z_group = g['#refs#/z']
+    #    print(g.keys())  # Print top-level keys for inspection
+    #    print(list(z_group.keys()))  # Print keys in z group
 
     # Extract simulation parameters from config
     end_time = config["simulation"]["t_end"]
@@ -252,6 +252,117 @@ def mat2npz_sim(file_path, config_path, output_dir):
     np.savez(save_path, **save_dict)
     print(f"Processed data and metadata saved to: {save_path}")
     return save_path
+
+def mat2npz_sim_2d(file_path, config_path, output_dir):
+    """
+    Convert simulation .mat (HDF5) file and config.json to .npz format for further analysis.
+    
+    Parameters
+    ----------
+    file_path : str
+        Path to the simulation .mat file (HDF5 format).
+    config_path : str
+        Path to the config.json file containing simulation metadata.
+    output_dir : str
+        Directory to save the processed .npz file.
+    Returns
+    -------
+    save_path : str
+        Path to the saved .npz file.
+    """
+    import h5py
+    import json
+    import numpy as np
+    import os
+    import re
+
+    # Load simulation config from JSON
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    # Open the .mat (HDF5) file and inspect structure
+    #with h5py.File(file_path, 'r') as g:
+    #    print(g.keys())  # Print top-level keys for inspection
+    #    v_group = g['#refs#/v']
+    #    print(list(v_group.keys()))  # Print keys in z group
+
+    # Extract simulation parameters from config
+    end_time = config["simulation"]["t_end"]
+    cfl = config["simulation"]["CFL"]
+    sound_speed = config["medium"]["water"]["sound_speed"]
+    dx = config["grid"]["dx"]
+    dy = config["grid"]["dy"]
+    dt = cfl * dx / sound_speed
+    fs = 1 / dt
+    print(fs)
+
+    # Try to get sensor_data or fallback to z group
+    with h5py.File(file_path, 'r') as g:
+        if 'sensor_data' in g:
+            # If 'sensor_data' exists as a dataset, use it
+            sensor_data = g['sensor_data/p'][:]
+            print(f"Shape of sensor_data:", np.size(sensor_data[15]))
+            processed_data = sensor_data[15]
+            # Get all top-level keys in the file
+            keys = list(g.keys())
+            print(f"keys:", keys)
+        else:
+            # If 'sensor_data' does not exist, use '#refs#/z' group
+            v_group = g['#refs#/v']
+            keys = list(v_group.keys())
+            key_15 = keys[15] if len(keys) > 15 else keys[0]
+            print(f"key_15:", key_15)
+            processed_data = v_group[key_15][:]
+            # Collect all datasets in z_group as a list
+            sensor_data = [v_group[k][:] for k in keys]
+
+    print(keys)
+    # Reshape processed_data to [1, :, 1] for consistency
+    # [number of measurements, sensor values, sensor index, (optional) vertical vector]
+    # Todo: implement scan_line function of kwave
+    print(f'sensor_data shape:{sensor_data.shape}')
+    ref_data, trans_data = np.split(sensor_data, 2, axis=1)
+    ref_data = np.mean(ref_data, axis=1)
+    trans_data = np.mean(trans_data, axis=1)
+    ref_processed_data = ref_data[np.newaxis, :, np.newaxis]
+    ref_processed_data=ref_processed_data[:,46875:,:]
+    trans_processed_data = trans_data[np.newaxis, :, np.newaxis]
+    trans_processed_data=trans_processed_data[:,46875:,:]
+    #processed_data=np.abs(hilbert(processed_data[:,50001:,:]))
+    #processed_data=processed_data[::20]
+    print(ref_processed_data[0, :, 0].shape)  # Confirm the shape of the signal values
+    print(f'new processed data shape:{ref_processed_data.shape}')
+
+    # Prepare dictionary for saving
+    save_dict = {
+        "processed_data": trans_processed_data,
+        "fs": fs,
+        "original_keys": keys,
+        # Add other metadata here if needed
+    }
+
+    base_filename = os.path.splitext(os.path.basename(file_path))[0]
+    num = re.findall(r'\d+', base_filename)[0]
+    base_filename = base_filename.replace('reflector'+num,'')
+    base_filename = base_filename + 'receiver' + num
+    save_path = os.path.join(output_dir, f"{base_filename}_processed.npz")
+    np.savez(save_path, **save_dict)
+    print(f"Processed data and metadata saved to: {save_path}")
+
+    # Prepare dictionary for saving
+    save_dict = {
+        "processed_data": ref_processed_data,
+        "fs": fs,
+        "original_keys": keys,
+        # Add other metadata here if needed
+    }
+
+    base_filename = os.path.splitext(os.path.basename(file_path))[0]
+    save_path = os.path.join(output_dir, f"{base_filename}_processed.npz")
+    np.savez(save_path, **save_dict)
+    print(f"Processed data and metadata saved to: {save_path}")
+    return save_path
+
 def mat2npz_exp(file_path, output_dir, start_time=0.0, duration=5.0, amplitude_threshold=2, window_width=0.1e-3, signal_key="TDX1"):
     """
     Convert experimental .mat data to .npz format and save with metadata.
