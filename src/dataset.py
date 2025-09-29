@@ -1,7 +1,8 @@
 from .utils import calculate_gvf_and_signal
-def process_case_and_return_dataset(case_name, base_dir,
+def process_case_and_return_dataset(case_name, base_dir, csv_dir,
                                     rolling_window = False,
-                                    window_size=20, stride=10):
+                                    log1p = False,
+                                    window_size=20, window_stride=10):
     """
     Process all .npz files in the specified case directory, extract signals and GVF,
     and return the resulting datasets for machine learning.
@@ -24,7 +25,8 @@ def process_case_and_return_dataset(case_name, base_dir,
     import os
     import numpy as np
     import json
-    import pandas as pd
+    import polars as pl
+    import re
     config_path = os.path.join(base_dir, "config.json")
     npz_files = sorted(glob.glob(os.path.join(base_dir, "*reflector*.npz")))
     print(npz_files)
@@ -32,19 +34,28 @@ def process_case_and_return_dataset(case_name, base_dir,
     t_list = []
 
     for npz_path in npz_files:
-        input_tmp, target_tmp = calculate_gvf_and_signal(config_path, npz_path)
+        match = re.search(r"(\d+)", os.path.basename(npz_path))
+        loc_idx = int(match.group(1))
+        if os.path.exists(os.path.join(csv_dir,'location_seed')):
+            loc_dir = 'location_seed'
+        else:
+            loc_dir = 'location_seed1' 
+        loc_dir = os.path.join(csv_dir,loc_dir)
+        csv_path = os.path.join(loc_dir, f'location{loc_idx}.csv')
+        input_tmp, target_tmp = calculate_gvf_and_signal(config_path, npz_path, csv_path)
         # Apply rolling window
         if rolling_window:
-            s = pd.Series(input_tmp)
-            rolling = s.rolling(window=window_size,step=stride)
-            rolling_max =rolling.max()
-            #print(f'rolling max: {rolling_max}')
-            input_tmp = rolling_max[2:].to_numpy()
+            s =pl.Series(x_test)
+            rolling_max = s.rolling_max(window_size=window_size,step=window_stride)
+            x_test = rolling_max[2:].to_numpy()
         # Apply log(1 + x) transformation element-wise to input_tmp
         #print(f'input_tmp b4 log1p: {input_tmp}')
-        input_tmp = np.log1p(input_tmp)
+        if log1p:
+            input_tmp = np.log1p(input_tmp)
         #print(f'input_tmp after log1p: {input_tmp}')
+        print(f'if nan:{np.isnan(input_tmp).any()}')
         x_list.append(input_tmp)
+        print(f'if nan:{np.isnan(x_list).any()}')
         t_list.append(target_tmp)
     #print(len(x_list))
     #print(len(t_list))

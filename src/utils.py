@@ -395,7 +395,7 @@ def analyze_mat_file_h5py(file_path):
             print(f"  {key}")
         print("\nFull structure and attributes:")
         f.visititems(print_attrs)
-def calculate_gvf_and_signal(config_path, npz_path):
+def calculate_gvf_and_signal(config_path, npz_path, csv_path):
     """
     Calculate the gas volume fraction (GVF) and extract the signal from the given files.
 
@@ -413,6 +413,10 @@ def calculate_gvf_and_signal(config_path, npz_path):
     target_tmp : float
         The calculated gas volume fraction (GVF).
     """
+    import polars as pl
+    df = pl.read_csv(csv_path,has_header=False)
+
+
     with open(config_path, "r") as f:
         config = json.load(f)
         num = config["simulation"]["num_particles"]
@@ -420,13 +424,18 @@ def calculate_gvf_and_signal(config_path, npz_path):
         r_pipe = config["pipe"]["inner_radius"]
         surface = math.pi * (r_pipe ** 2)
         height = config["grid"]["Nz"] * config["grid"]["dz"] 
-        ball = 4 * r_ball**3 * math.pi /3
-        v_sphere = num * ball
-        v_pipe = surface * height
+        v_pipe = surface
+    v_sphere=0
+    for i in range(num):
+        cur_r_ball = r_ball**2 - ((df[i,2]-0.5)*height)**2
+        if cur_r_ball > 0:
+            v_sphere += math.pi*cur_r_ball
 
     signal = np.load(npz_path)['processed_data']
+    #print(f'if nan:{np.isnan(signal).any()}')
     #print(f'shape of signal:{np.shape(signal)}') 1*75000*1
     signal_tdx1 = signal[0, :, 0]
+    #print(f'if nan:{np.isnan(signal_tdx1).any()}')
     gvf = v_sphere / v_pipe
     #print(f"gvf: {gvf}")
     #print(f"signal_tdx1: {signal_tdx1.shape}")
@@ -436,13 +445,16 @@ def calculate_gvf_and_signal(config_path, npz_path):
     for i in range(2500):
         input_index_list[i] = int(input_tmp_size/2500*i)
     #print(f'input_index_list: {input_index_list}')
+    #print(f'if nan:{np.isnan(input_tmp).any()}')
     input_tmp= np.abs(hilbert(input_tmp))
     input_tmp_new2 =  [input_tmp[i] for i in input_index_list]#計2500になるようにデータを取得
-    #print(f'input_tmp: {input_tmp[1200]}')
+    input_tmp_new2 = np.array(input_tmp_new2)
+    #
+    print(f'input_tmp: {input_tmp_new2.shape}')
     target_tmp = gvf
     if target_tmp < 0.0008:
         print(f"case:{config_path}")
-        print(f"ball:{ball}")
+        print(f"ball:{v_sphere}")
         print(f"v_pipe:{v_pipe}")
         print(f"gvf:{gvf}")
     return input_tmp_new2, target_tmp
