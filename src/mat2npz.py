@@ -275,6 +275,7 @@ def mat2npz_sim_2d(file_path, config_path, output_dir):
     import numpy as np
     import os
     import re
+    from .utils import npz2png
 
     # Load simulation config from JSON
     with open(config_path, 'r') as f:
@@ -348,6 +349,8 @@ def mat2npz_sim_2d(file_path, config_path, output_dir):
     save_path = os.path.join(output_dir, f"{base_filename}_processed.npz")
     np.savez(save_path, **save_dict)
     print(f"Processed data and metadata saved to: {save_path}")
+    npz2png(file_path=save_path, save_path=output_dir,
+            full=False, pulse_index=0)
 
     # Prepare dictionary for saving
     save_dict = {
@@ -361,6 +364,8 @@ def mat2npz_sim_2d(file_path, config_path, output_dir):
     save_path = os.path.join(output_dir, f"{base_filename}_processed.npz")
     np.savez(save_path, **save_dict)
     print(f"Processed data and metadata saved to: {save_path}")
+    npz2png(file_path=save_path, save_path=output_dir,
+            full=False, pulse_index=0)
     return save_path
 
 def mat2npz_exp(file_path, output_dir, start_time=0.0, duration=5.0, amplitude_threshold=2, window_width=0.1e-3, signal_key="TDX1"):

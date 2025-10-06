@@ -1,8 +1,10 @@
 from .utils import calculate_gvf_and_signal
 def process_case_and_return_dataset(case_name, base_dir, csv_dir,
+                                    output_path,
                                     rolling_window = False,
                                     log1p = False,
-                                    window_size=20, window_stride=10):
+                                    window_size=20, window_stride=10,
+                                    label_dim=2):
     """
     Process all .npz files in the specified case directory, extract signals and GVF,
     and return the resulting datasets for machine learning.
@@ -27,6 +29,7 @@ def process_case_and_return_dataset(case_name, base_dir, csv_dir,
     import json
     import polars as pl
     import re
+    from matplotlib import pyplot as plt
     config_path = os.path.join(base_dir, "config.json")
     npz_files = sorted(glob.glob(os.path.join(base_dir, "*reflector*.npz")))
     print(npz_files)
@@ -42,25 +45,48 @@ def process_case_and_return_dataset(case_name, base_dir, csv_dir,
             loc_dir = 'location_seed1' 
         loc_dir = os.path.join(csv_dir,loc_dir)
         csv_path = os.path.join(loc_dir, f'location{loc_idx}.csv')
-        input_tmp, target_tmp = calculate_gvf_and_signal(config_path, npz_path, csv_path)
+        print(f'csv_path:{csv_path}')
+        print(f'npz_path:{npz_path}')
+        input_tmp, target_tmp = calculate_gvf_and_signal(config_path, npz_path, csv_path,
+                                                         label_dim=label_dim)
         # Apply rolling window
         if rolling_window:
-            s =pl.Series(x_test)
-            rolling_max = s.rolling_max(window_size=window_size,step=window_stride)
-            x_test = rolling_max[2:].to_numpy()
+            s =pl.Series(input_tmp)
+            rolling_max = s.rolling_max(window_size=window_size)[window_size-1:]
+            #print(f'rolling max 0: {rolling_max[:12]}')
+            input_tmp = rolling_max.gather_every(window_stride).to_numpy()
         # Apply log(1 + x) transformation element-wise to input_tmp
         #print(f'input_tmp b4 log1p: {input_tmp}')
+        print(f'input tmp shape{input_tmp.shape}')
+        input_tmp = input_tmp/np.max(input_tmp)
         if log1p:
             input_tmp = np.log1p(input_tmp)
         #print(f'input_tmp after log1p: {input_tmp}')
-        print(f'if nan:{np.isnan(input_tmp).any()}')
+        if np.isnan(input_tmp).any():     
+            print(f'nan exists')
         x_list.append(input_tmp)
-        print(f'if nan:{np.isnan(x_list).any()}')
+        if np.isnan(x_list).any():
+            print(f'nan exists')
         t_list.append(target_tmp)
     #print(len(x_list))
     #print(len(t_list))
     # Convert lists to numpy arrays for machine learning
     x_train = np.array(x_list)
+    t=np.arange(0,50e-6,50e-6/len(x_train[0]))
+    plt.figure(figsize=(10, 4))
+    plt.plot(t*1e6, x_train[0], color='blue', label='Original Pulse')
+    plt.legend()
+    plt.xlabel('Time (μs)')
+    plt.ylabel('Amplitude')
+    plt.title('Case {}'.format(case_name))
+    plt.tight_layout()
+    import os
+    #base_name = os.path.splitext(os.path.basename(file_path))[0]
+    #save_path = os.path.join(base_dir, 'graph')
+    new_save_path = os.path.join(base_dir, f"{case_name}_img.png")
+    print(new_save_path)
+    plt.savefig(new_save_path)
+    plt.close()
     #print(f'x_train b4 convert: {x_list}')
     #print(f'x_train after convert: {x_train}')
     t_train = np.array(t_list)

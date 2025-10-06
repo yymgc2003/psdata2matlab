@@ -1,4 +1,5 @@
 import scipy.io as sio
+from scipy import signal
 import numpy as np
 import os
 from pprint import pprint
@@ -8,7 +9,11 @@ import json
 import math
 from scipy.signal import hilbert
 import torch
-def hilbert_cuda(img_data_torch, device):
+def hilbert_cuda(img_data_torch, device, if_hilbert = True,
+                 low_filter_freq = 0,
+                 high_filter_freq = 1.0e9,
+                 filter_order = 8,
+                 fs = 52e6):
             """
             Compute the Hilbert envelope of input data using torch (GPU/CPU).
 
@@ -40,15 +45,28 @@ def hilbert_cuda(img_data_torch, device):
                 # The rest remain zero
 
             # FFT along the time axis
-            Xf = torch.fft.fft(img_data_torch, dim=1)
-            # Apply the Hilbert transformer
-            Xf = Xf * h
-            # IFFT to get the analytic signal
-            analytic_signal = torch.fft.ifft(Xf, dim=1)
-            # Take the amplitude envelope
-            img_data_torch_abs = torch.abs(analytic_signal)
-            # Move to CPU and convert to numpy array
-            return img_data_torch_abs.cpu().numpy()
+            low_filter_idx = 0.0
+            high_filter_idx = float("Inf")
+            low_filter_idx = int(low_filter_freq / fs * n_samples)
+            high_filter_idx = int(high_filter_freq /fs * n_samples)
+            if high_filter_idx > n_samples-1:
+                 high_filter_idx = n_samples-1
+            print(f'bandpass: {low_filter_idx}, {high_filter_idx}\n')
+            #Xf[:,0:low_filter_idx] = 0
+            #Xf[:,high_filter_idx:n_samples] = 0
+            if if_hilbert:
+                Xf = torch.fft.fft(img_data_torch, dim=1)
+                # Apply the Hilbert transformer
+                Xf = Xf * h
+                # IFFT to get the analytic signal
+                analytic_signal = torch.fft.ifft(Xf, dim=1)
+                # Take the amplitude envelope
+                img_data_torch_abs = torch.abs(analytic_signal)
+                # Move to CPU and convert to numpy array
+                return img_data_torch_abs.cpu().numpy()
+            else:
+                return img_data_torch.cpu().numpy()
+
 def analyze_mat_file(file_path):
     """
     Load a .mat file and print all metadata
@@ -225,7 +243,9 @@ def plot_signal_waveform(file_path, start_ms=0, end_ms=100):
     
     plt.tight_layout()
     plt.show()
-def npz2png(file_path, save_path, channel_index=0, start_time=0.0, end_time=None, full=True, pulse_index=0):    
+def npz2png(file_path, save_path, channel_index=0, 
+            start_time=0.0, end_time=None, full=True, 
+            pulse_index=0, envelope=True):    
     """
     Convert processed .npz signal data to PNG image.
     
@@ -348,11 +368,13 @@ def npz2png(file_path, save_path, channel_index=0, start_time=0.0, end_time=None
         neglegible_time = 3e-6 # 3μs
         zero_samples = int(neglegible_time * fs)
         pulse[:zero_samples] = 0
-        analytic_pulse = np.abs(hilbert(pulse))
+        if envelope:
+            analytic_pulse = np.abs(hilbert(pulse))
         #analytic_pulse = np.log1p(analytic_pulse)
         #print(pulse) 
         plt.figure(figsize=(10, 4))
-        plt.plot(t*1e6, analytic_pulse, color='red', label='Envelope')
+        if envelope:
+            plt.plot(t*1e6, analytic_pulse, color='red', label='Envelope')
         plt.plot(t*1e6, pulse, color='blue', label='Original Pulse')
         plt.legend()
         plt.xlabel('Time (μs)')
@@ -364,6 +386,126 @@ def npz2png(file_path, save_path, channel_index=0, start_time=0.0, end_time=None
         base_name = os.path.splitext(os.path.basename(file_path))[0]
         channel=channel_index
         new_save_path = os.path.join(save_path, f"{base_name}_{channel}pulse.png")
+        print(new_save_path)
+        plt.savefig(new_save_path)
+        plt.close()
+def ndarray2png(signal_array, fs, save_path, channel_index=0, 
+            start_time=0.0, end_time=None, full=True, 
+            pulse_index=0, envelope=False):
+    # .npzファイルからデータを読み込む
+    processed_data = signal_array
+    print(f"processed_data.shape:{processed_data.shape}")
+    # full=Trueの場合は全パルスを画像化
+    if full:
+        # processed_dataのshape: (n_pulses, n_samples, n_channels)
+        # 指定チャンネルの全パルスを抽出
+        if processed_data.ndim == 3:
+            # Check if the channel_index is within the valid range
+            if channel_index < 0 or channel_index >= processed_data.shape[2]:
+                raise IndexError(f"channel_index {channel_index} is out of bounds for axis 2 with size {processed_data.shape[2]}")
+            img_data = processed_data[:, :, channel_index]
+            n_samples = img_data.shape[1]
+        elif processed_data.ndim == 2:
+            img_data = processed_data  # (n_pulses, n_samples)
+            n_samples = img_data.shape[1]
+        # If processed_data has other dimensions, raise an error
+        else:
+            raise ValueError("processed_data shape is not supported.")
+        
+        # Determine the time axis range
+        t = np.arange(n_samples) / fs
+        if end_time is None:
+            end_time = t[-1]
+        start_idx = int(start_time * fs)
+        end_idx = int(end_time * fs)
+        if end_idx > n_samples:
+            end_idx = n_samples
+        img_data = img_data[:, start_idx:end_idx]
+        # Apply Hilbert transform to each pulse in img_data along the time axis
+        # The analytic signal is computed for each pulse (row) individually
+        # ヒルベルト変換をtorchで実装する
+        import torch
+
+        neglegible_time = 3e-6
+        zero_samples = int(neglegible_time * fs)
+
+        # img_data: (n_pulses, n_samples)
+        # GPUにデータを転送
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        img_data_torch = torch.from_numpy(img_data).float().to(device)
+        #print(f"device: {device}")
+        # 初期部分を0にする
+        if zero_samples > 0:
+            img_data_torch[:, :zero_samples] = 0
+
+        # ヒルベルト変換のためのハイライザー（周波数領域での乗数）を作成
+        n_samples = img_data_torch.shape[1]
+
+        img_data = hilbert_cuda(img_data_torch, device)
+        #print(img_data.shape)
+        t = t[start_idx:end_idx]
+        #print(t.shape)
+        #print(np.max(img_data),np.min(img_data))
+        #img_data[img_data>0.1] = 0.1
+        
+        plt.figure(figsize=(10, 4))
+        #plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0]*1e6, t[-1]*1e6, img_data.shape[0]-0.5, -0.5],vmin=0,vmax=1)
+        plt.imshow(img_data, aspect='auto', cmap='jet', extent=[t[0]*1e6, t[-1]*1e6, img_data.shape[0]-0.5, -0.5])
+        #困ったらこのサイト:https://beiznotes.org/matplot-cmap-list/
+        #plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0], t[-1], img_data.shape[0]-0.5, -0.5])
+        plt.colorbar(label='Amplitude')
+        plt.xlabel('Time (μs)')
+        plt.ylabel('Pulse Number')
+        plt.title('All Pulses (Channel {})'.format(channel_index))
+        plt.tight_layout()
+        import os
+        new_save_path = save_path + '_img.png'
+        print(new_save_path)
+        plt.savefig(new_save_path)
+        plt.close()
+    else:
+        # full=Falseの場合は指定パルスのみをプロット
+        print(f'processed_data.ndim = {processed_data.ndim}')
+        if processed_data.ndim == 3:
+            pulse = processed_data[pulse_index, :, channel_index]
+           
+        elif processed_data.ndim == 2:
+            pulse = processed_data[pulse_index, :]
+        elif processed_data.ndim == 1:
+            pulse = processed_data
+        else:
+            raise ValueError("processed_data shape is not supported.")
+        n_samples = len(pulse)
+        t = np.arange(n_samples) / fs
+        if end_time is None:
+            end_time = t[-1]
+        start_idx = int(start_time * fs)
+        end_idx = int(end_time * fs)
+        if end_idx > n_samples:
+            end_idx = n_samples
+        t = t[start_idx:end_idx]
+        pulse = pulse[start_idx:end_idx]
+        # Apply Hilbert transform to the pulse to obtain its analytic signal
+        # The absolute value of the analytic signal gives the envelope of the pulse
+        from scipy.signal import hilbert
+        neglegible_time = 3e-6 # 3μs
+        zero_samples = int(neglegible_time * fs)
+        pulse[:zero_samples] = 0
+        if envelope:
+            analytic_pulse = np.abs(hilbert(pulse))
+        #analytic_pulse = np.log1p(analytic_pulse)
+        #print(pulse) 
+        plt.figure(figsize=(10, 4))
+        if envelope:
+            plt.plot(t*1e6, analytic_pulse, color='red', label='Envelope')
+        plt.plot(t*1e6, pulse, color='blue', label='Original Pulse')
+        plt.legend()
+        plt.xlabel('Time (μs)')
+        plt.ylabel('Amplitude')
+        plt.title('Pulse {} (Channel {})'.format(pulse_index, channel_index))
+        plt.tight_layout()
+        import os
+        new_save_path = save_path + '_pulse.png'
         print(new_save_path)
         plt.savefig(new_save_path)
         plt.close()
@@ -395,7 +537,8 @@ def analyze_mat_file_h5py(file_path):
             print(f"  {key}")
         print("\nFull structure and attributes:")
         f.visititems(print_attrs)
-def calculate_gvf_and_signal(config_path, npz_path, csv_path):
+def calculate_gvf_and_signal(config_path, npz_path, csv_path,
+                             label_dim=2):
     """
     Calculate the gas volume fraction (GVF) and extract the signal from the given files.
 
@@ -426,18 +569,23 @@ def calculate_gvf_and_signal(config_path, npz_path, csv_path):
         height = config["grid"]["Nz"] * config["grid"]["dz"] 
         v_pipe = surface
     v_sphere=0
-    for i in range(num):
-        cur_r_ball = r_ball**2 - ((df[i,2]-0.5)*height)**2
-        if cur_r_ball > 0:
-            v_sphere += math.pi*cur_r_ball
+    if label_dim==2:
+        for i in range(num):
+            cur_r_ball = r_ball**2 - ((df[i,2]-0.5)*height)**2
+            if cur_r_ball > 0:
+                v_sphere += math.pi*cur_r_ball
+        gvf = v_sphere / v_pipe
+    if label_dim==3:
+        v_sphere = num*4*math.pi/3*r_ball**3
+        v_pipe = surface*height
+        gvf = v_sphere / v_pipe
+    #print(f"gvf: {gvf}")
 
     signal = np.load(npz_path)['processed_data']
     #print(f'if nan:{np.isnan(signal).any()}')
     #print(f'shape of signal:{np.shape(signal)}') 1*75000*1
     signal_tdx1 = signal[0, :, 0]
     #print(f'if nan:{np.isnan(signal_tdx1).any()}')
-    gvf = v_sphere / v_pipe
-    #print(f"gvf: {gvf}")
     #print(f"signal_tdx1: {signal_tdx1.shape}")
     input_tmp = signal_tdx1
     input_tmp_size = np.shape(input_tmp)[0]
@@ -577,4 +725,6 @@ def rolling_window_signal(signal_input, window_size=10,
     #左端と右端で32mm=約40usの差があるのでこれをもとにその範囲を取り出す
     pipe_length_second = 40e-6
     last_index = int(pipe_length_second / dt)
-    
+
+def signal_integrate(signal_input, dt):
+    return np.sum(signal_input**2) * dt
