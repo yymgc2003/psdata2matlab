@@ -391,7 +391,7 @@ def npz2png(file_path, save_path, channel_index=0,
         plt.close()
 def ndarray2png(signal_array, fs, save_path, channel_index=0, 
             start_time=0.0, end_time=None, full=True, 
-            pulse_index=0, envelope=False):
+            pulse_index=0, envelope=False, fft_plot=False):
     # .npzファイルからデータを読み込む
     processed_data = signal_array
     print(f"processed_data.shape:{processed_data.shape}")
@@ -465,50 +465,86 @@ def ndarray2png(signal_array, fs, save_path, channel_index=0,
         plt.close()
     else:
         # full=Falseの場合は指定パルスのみをプロット
-        print(f'processed_data.ndim = {processed_data.ndim}')
-        if processed_data.ndim == 3:
-            pulse = processed_data[pulse_index, :, channel_index]
-           
-        elif processed_data.ndim == 2:
-            pulse = processed_data[pulse_index, :]
-        elif processed_data.ndim == 1:
-            pulse = processed_data
+        if fft_plot:
+            print(f'processed_data.ndim = {processed_data.ndim}')
+            if processed_data.ndim == 3:
+                pulse = processed_data[pulse_index, :, channel_index]
+            
+            elif processed_data.ndim == 2:
+                pulse = processed_data[pulse_index, :]
+            elif processed_data.ndim == 1:
+                pulse = processed_data
+            else:
+                raise ValueError("processed_data shape is not supported.")
+            n_samples = len(pulse)
+            freq = np.arange(n_samples)*fs/n_samples
+            if end_time is None:
+                end_time = freq[-1]
+            start_idx = 0
+            end_idx = n_samples//2
+            if end_idx > n_samples:
+                end_idx = n_samples
+            freq = freq[0:n_samples//2]
+            pulse = pulse[start_idx:end_idx]
+            # Apply Hilbert transform to the pulse to obtain its analytic signal
+            # The absolute value of the analytic signal gives the envelope of the pulse
+            plt.figure(figsize=(10, 4))
+            plt.plot(freq, pulse, color='blue', label='Original Pulse')
+            plt.legend()
+            plt.xlabel('Frequency (MHz)')
+            plt.ylabel('Amplitude')
+            plt.title('Pulse {} (Channel {})'.format(pulse_index, channel_index))
+            plt.tight_layout()
+            import os
+            new_save_path = save_path + '_fft.png'
+            print(new_save_path)
+            plt.savefig(new_save_path)
+            plt.close()
         else:
-            raise ValueError("processed_data shape is not supported.")
-        n_samples = len(pulse)
-        t = np.arange(n_samples) / fs
-        if end_time is None:
-            end_time = t[-1]
-        start_idx = int(start_time * fs)
-        end_idx = int(end_time * fs)
-        if end_idx > n_samples:
-            end_idx = n_samples
-        t = t[start_idx:end_idx]
-        pulse = pulse[start_idx:end_idx]
-        # Apply Hilbert transform to the pulse to obtain its analytic signal
-        # The absolute value of the analytic signal gives the envelope of the pulse
-        from scipy.signal import hilbert
-        neglegible_time = 3e-6 # 3μs
-        zero_samples = int(neglegible_time * fs)
-        pulse[:zero_samples] = 0
-        if envelope:
-            analytic_pulse = np.abs(hilbert(pulse))
-        #analytic_pulse = np.log1p(analytic_pulse)
-        #print(pulse) 
-        plt.figure(figsize=(10, 4))
-        if envelope:
-            plt.plot(t*1e6, analytic_pulse, color='red', label='Envelope')
-        plt.plot(t*1e6, pulse, color='blue', label='Original Pulse')
-        plt.legend()
-        plt.xlabel('Time (μs)')
-        plt.ylabel('Amplitude')
-        plt.title('Pulse {} (Channel {})'.format(pulse_index, channel_index))
-        plt.tight_layout()
-        import os
-        new_save_path = save_path + '_pulse.png'
-        print(new_save_path)
-        plt.savefig(new_save_path)
-        plt.close()
+            print(f'processed_data.ndim = {processed_data.ndim}')
+            if processed_data.ndim == 3:
+                pulse = processed_data[pulse_index, :, channel_index]
+            
+            elif processed_data.ndim == 2:
+                pulse = processed_data[pulse_index, :]
+            elif processed_data.ndim == 1:
+                pulse = processed_data
+            else:
+                raise ValueError("processed_data shape is not supported.")
+            n_samples = len(pulse)
+            t = np.arange(n_samples) / fs
+            if end_time is None:
+                end_time = t[-1]
+            start_idx = int(start_time * fs)
+            end_idx = int(end_time * fs)
+            if end_idx > n_samples:
+                end_idx = n_samples
+            t = t[start_idx:end_idx]
+            pulse = pulse[start_idx:end_idx]
+            # Apply Hilbert transform to the pulse to obtain its analytic signal
+            # The absolute value of the analytic signal gives the envelope of the pulse
+            from scipy.signal import hilbert
+            neglegible_time = 3e-6 # 3μs
+            zero_samples = int(neglegible_time * fs)
+            pulse[:zero_samples] = 0
+            if envelope:
+                analytic_pulse = np.abs(hilbert(pulse))
+            #analytic_pulse = np.log1p(analytic_pulse)
+            #print(pulse) 
+            plt.figure(figsize=(10, 4))
+            if envelope:
+                plt.plot(t*1e6, analytic_pulse, color='red', label='Envelope')
+            plt.plot(t*1e6, pulse, color='blue', label='Original Pulse')
+            plt.legend()
+            plt.xlabel('Time (μs)')
+            plt.ylabel('Amplitude')
+            plt.title('Pulse {} (Channel {})'.format(pulse_index, channel_index))
+            plt.tight_layout()
+            import os
+            new_save_path = save_path + '_pulse.png'
+            print(new_save_path)
+            plt.savefig(new_save_path)
+            plt.close()
 def analyze_mat_file_h5py(file_path):
     """
     Display metadata of a MATLAB v7.3 (HDF5-based) .mat file using h5py.
