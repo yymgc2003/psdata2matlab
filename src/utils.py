@@ -318,7 +318,7 @@ def npz2png(file_path, save_path, channel_index=0, start_time=0.0, end_time=None
         plt.tight_layout()
         import os
         base_name = os.path.splitext(os.path.basename(file_path))[0]
-        new_save_path = os.path.join(save_path, f"{base_name}_{channel_index}img.png")
+        new_save_path = os.path.join(save_path, f"{base_name}_{channel_index}img{pulse_index}.png")
         print(new_save_path)
         plt.savefig(new_save_path)
         plt.close()
@@ -347,22 +347,25 @@ def npz2png(file_path, save_path, channel_index=0, start_time=0.0, end_time=None
         neglegible_time = 3e-6 # 3μs
         zero_samples = int(neglegible_time * fs)
         pulse[:zero_samples] = 0
+        pulse = pulse/np.max(pulse)
         analytic_pulse = np.abs(hilbert(pulse))
         #analytic_pulse = np.log1p(analytic_pulse)
         #print(pulse) 
         plt.figure(figsize=(10, 4))
         plt.plot(t*1e6, analytic_pulse, color='red', label='Envelope')
         plt.plot(t*1e6, pulse, color='blue', label='Original Pulse')
+        plt.grid(True, which='both')
         plt.legend()
-        plt.xlabel('Time (μs)')
-        plt.ylabel('Amplitude')
-        plt.title('Pulse {} (Channel {})'.format(pulse_index, channel_index))
+        plt.xlabel('Time (μs)',fontsize=24)
+        plt.ylabel('Amplitude',fontsize=24)
+        plt.title('Pulse {} (Channel {})'.format(pulse_index, channel_index),fontsize=24)
+        plt.tick_params(labelsize=18)
         plt.tight_layout()
         import os
         #base = os.path.dirname(save_path)
         base_name = os.path.splitext(os.path.basename(file_path))[0]
         channel=channel_index
-        new_save_path = os.path.join(save_path, f"{base_name}_{channel}pulse.png")
+        new_save_path = os.path.join(save_path, f"{base_name}_{channel}pulse{pulse_index}.png")
         print(new_save_path)
         plt.savefig(new_save_path)
         plt.close()
@@ -430,6 +433,7 @@ def calculate_gvf_and_signal(config_path, npz_path):
     #print(f"signal_tdx1: {signal_tdx1.shape}")
     input_tmp = signal_tdx1
     input_tmp = np.abs(hilbert(input_tmp))[::20]
+    #input_tmp = np.log1p(input_tmp)
     target_tmp = gvf
     if target_tmp < 0.0008:
         print(f"case:{config_path}")
