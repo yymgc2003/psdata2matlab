@@ -9,6 +9,9 @@ import json
 import math
 from scipy.signal import hilbert
 import torch
+import polars as pl 
+from scipy.spatial.distance import pdist, squareform
+import glob
 def hilbert_cuda(img_data_torch, device, if_hilbert = True,
                  low_filter_freq = 0,
                  high_filter_freq = 1.0e9,
@@ -43,29 +46,18 @@ def hilbert_cuda(img_data_torch, device, if_hilbert = True,
                 h[0] = 1
                 h[1:(n_samples+1)//2] = 2
                 # The rest remain zero
-
-            # FFT along the time axis
-            low_filter_idx = 0.0
-            high_filter_idx = float("Inf")
-            low_filter_idx = int(low_filter_freq / fs * n_samples)
-            high_filter_idx = int(high_filter_freq /fs * n_samples)
-            if high_filter_idx > n_samples-1:
-                 high_filter_idx = n_samples-1
-            print(f'bandpass: {low_filter_idx}, {high_filter_idx}\n')
             #Xf[:,0:low_filter_idx] = 0
             #Xf[:,high_filter_idx:n_samples] = 0
-            if if_hilbert:
-                Xf = torch.fft.fft(img_data_torch, dim=1)
-                # Apply the Hilbert transformer
-                Xf = Xf * h
-                # IFFT to get the analytic signal
-                analytic_signal = torch.fft.ifft(Xf, dim=1)
-                # Take the amplitude envelope
-                img_data_torch_abs = torch.abs(analytic_signal)
-                # Move to CPU and convert to numpy array
-                return img_data_torch_abs.cpu().numpy()
-            else:
-                return img_data_torch.cpu().numpy()
+            Xf = torch.fft.fft(img_data_torch, dim=1)
+            # Apply the Hilbert transformer
+            Xf = Xf * h
+            # IFFT to get the analytic signal
+            analytic_signal = torch.fft.ifft(Xf, dim=1)
+            # Take the amplitude envelope
+            img_data_torch_abs = torch.abs(analytic_signal)
+            # Move to CPU and convert to numpy array
+            return img_data_torch_abs.cpu().numpy()
+
 
 def analyze_mat_file(file_path):
     """
@@ -245,7 +237,8 @@ def plot_signal_waveform(file_path, start_ms=0, end_ms=100):
     plt.show()
 def npz2png(file_path, save_path, channel_index=0, 
             start_time=0.0, end_time=None, full=True, 
-            pulse_index=0, envelope=True):    
+            pulse_index=0, envelope=True, pulse_len=1000,
+            start_pulse=5000, fft_plot=False):    
     """
     Convert processed .npz signal data to PNG image.
     
@@ -299,7 +292,7 @@ def npz2png(file_path, save_path, channel_index=0,
         end_idx = int(end_time * fs)
         if end_idx > n_samples:
             end_idx = n_samples
-        img_data = img_data[:, start_idx:end_idx]
+        img_data = img_data[start_pulse:start_pulse+pulse_len, start_idx:end_idx]
         # Apply Hilbert transform to each pulse in img_data along the time axis
         # The analytic signal is computed for each pulse (row) individually
         # ヒルベルト変換をtorchで実装する
@@ -307,6 +300,8 @@ def npz2png(file_path, save_path, channel_index=0,
 
         neglegible_time = 3e-6
         zero_samples = int(neglegible_time * fs)
+
+        img_data = filter_signal([1e6, 10e6], img_data, fs)
 
         # img_data: (n_pulses, n_samples)
         # GPUにデータを転送
@@ -327,9 +322,10 @@ def npz2png(file_path, save_path, channel_index=0,
         #print(np.max(img_data),np.min(img_data))
         
         
-        plt.figure(figsize=(10, 4))
+        plt.figure(figsize=(10, 10))
+        plt.rcParams['font.size'] = 20
         #plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0]*1e6, t[-1]*1e6, img_data.shape[0]-0.5, -0.5],vmin=0,vmax=1)
-        plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0]*1e6, t[-1]*1e6, img_data.shape[0]-0.5, -0.5])
+        plt.imshow(img_data, aspect='auto', interpolation='nearest',cmap='viridis', extent=[t[0]*1e6, t[-1]*1e6, img_data.shape[0]-0.5, -0.5],vmin=0,vmax=0.4)
         #plt.imshow(img_data, aspect='auto', cmap='viridis', extent=[t[0], t[-1], img_data.shape[0]-0.5, -0.5])
         plt.colorbar(label='Amplitude')
         plt.xlabel('Time (μs)')
@@ -362,17 +358,25 @@ def npz2png(file_path, save_path, channel_index=0,
             end_idx = n_samples
         t = t[start_idx:end_idx]
         pulse = pulse[start_idx:end_idx]
+        pulse_raw = pulse.copy()
         # Apply Hilbert transform to the pulse to obtain its analytic signal
         # The absolute value of the analytic signal gives the envelope of the pulse
         from scipy.signal import hilbert
         neglegible_time = 3e-6 # 3μs
         zero_samples = int(neglegible_time * fs)
+
+        pulse_new = np.array([pulse])
+
+        pulse_new = filter_signal([1e6, 10e6], pulse_new, fs)
+        pulse = pulse_new[0]
+
         pulse[:zero_samples] = 0
         if envelope:
             analytic_pulse = np.abs(hilbert(pulse))
         #analytic_pulse = np.log1p(analytic_pulse)
         #print(pulse) 
         plt.figure(figsize=(10, 4))
+        plt.rcParams['font.size'] = 16
         if envelope:
             plt.plot(t*1e6, analytic_pulse, color='red', label='Envelope')
         plt.plot(t*1e6, pulse, color='blue', label='Original Pulse')
@@ -389,6 +393,68 @@ def npz2png(file_path, save_path, channel_index=0,
         print(new_save_path)
         plt.savefig(new_save_path)
         plt.close()
+        if fft_plot:
+            import torch
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            pulse_raw = torch.from_numpy(pulse_raw).float().to(device)
+            pulse_fft = torch.fft.fft(pulse_raw)
+            pulse_fft = torch.pow(torch.abs(pulse_fft), 2)
+            pulse_fft = pulse_fft.cpu().numpy()
+            n_samples = len(pulse_raw)
+            freq = np.arange(n_samples)*fs/n_samples
+            if end_time is None:
+                end_time = freq[-1]
+            start_idx = 0
+            end_idx = n_samples//2
+            if end_idx > n_samples:
+                end_idx = n_samples
+            freq = freq[0:n_samples//2]
+            pulse_fft = pulse_fft[start_idx:end_idx]
+            pulse_fft = pulse_fft/len(pulse_fft)/fs/2
+            # Apply Hilbert transform to the pulse to obtain its analytic signal
+            # The absolute value of the analytic signal gives the envelope of the pulse
+            plt.figure(figsize=(10, 4))
+            plt.rcParams['font.size'] = 16
+            plt.plot(freq*1e-6, pulse_fft, color='blue', label='Original Pulse')
+            plt.axvline(x=4, color='r',linestyle='--', linewidth=1.5, label='4 MHz')
+            plt.legend()
+            plt.xlabel('Frequency (MHz)')
+            plt.ylabel('Amplitude')
+            plt.ylim(-0.1*np.max(pulse_fft[40:n_samples//2]), 1.1*np.max(pulse_fft[40:n_samples//2]))
+            label_text = '4 MHz'
+            plt.text(plt.xlim()[1]*0.13, plt.ylim()[1]*1.1,label_text, 
+            color='r', 
+            fontsize=18,
+            rotation=0,         # テキストの回転 (90度にすると縦書きになる)
+            ha='left',          # Horizontal Alignment: 左寄せ
+            va='top'            # Vertical Alignment: 上端合わせ
+            )
+            plt.title('Pulse {} (Channel {})'.format(pulse_index, channel_index))
+            plt.tight_layout()
+            import os
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            channel=channel_index
+            new_save_path = os.path.join(save_path, f"{base_name}_{channel}fft.png")
+            print(new_save_path)
+            plt.savefig(new_save_path)
+            plt.close()
+
+            plt.figure(figsize=(10, 4))
+            plt.rcParams['font.size'] = 16
+            plt.plot(t*1e6, pulse, color='blue', label='FFT')
+            plt.legend()
+            plt.xlabel('Frequency (MHz)')
+            plt.ylabel('Amplitude')
+            plt.title('Pulse {} (Channel {})'.format(pulse_index, channel_index))
+            plt.tight_layout()
+            import os
+            #base = os.path.dirname(save_path)
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            channel=channel_index
+            new_save_path = os.path.join(save_path, f"{base_name}_{channel}pulse.png")
+            print(new_save_path)
+            plt.savefig(new_save_path)
+            plt.close()
 def ndarray2png(signal_array, fs, save_path, channel_index=0, 
             start_time=0.0, end_time=None, full=True, 
             pulse_index=0, envelope=False, fft_plot=False):
@@ -592,18 +658,19 @@ def calculate_gvf_and_signal(config_path, npz_path, csv_path,
     target_tmp : float
         The calculated gas volume fraction (GVF).
     """
+    from scipy.spatial.distance import pdist
     import polars as pl
-    df = pl.read_csv(csv_path,has_header=False)
-
 
     with open(config_path, "r") as f:
         config = json.load(f)
-        num = config["simulation"]["num_particles"]
-        r_ball = config["simulation"]["glass_radius"] 
-        r_pipe = config["pipe"]["inner_radius"]
-        surface = math.pi * (r_pipe ** 2)
-        height = config["grid"]["Nz"] * config["grid"]["dz"] 
-        v_pipe = surface
+    num = config["simulation"]["num_particles"]
+    r_ball = config["simulation"]["glass_radius"] * 1e3
+    r_pipe = config["pipe"]["inner_radius"]
+    surface = math.pi * (r_pipe ** 2)
+    height = (config["grid"]["Nz"]-20) * config["grid"]["dz"] *1e3
+    v_pipe = surface
+
+    df = pl.read_csv(csv_path,has_header=False)
     v_sphere=0
     if label_dim==2:
         for i in range(num):
@@ -612,7 +679,15 @@ def calculate_gvf_and_signal(config_path, npz_path, csv_path,
                 v_sphere += math.pi*cur_r_ball
         gvf = v_sphere / v_pipe
     if label_dim==3:
+        loc_arr = df.to_numpy()
+        loc_arr[:,0:2] *= r_pipe
+        loc_arr[:,2] *= height
+        dist_arr = pdist(loc_arr, metric='euclidean')
         v_sphere = num*4*math.pi/3*r_ball**3
+        for dist in dist_arr:
+            if dist < 2*r_ball:
+                v_sphere -= 2*math.pi*(2/3*r_ball**3-r_ball**2*dist/2+1/3*(dist/2)**3)
+        #height = config["grid"]["Nz"] * config["grid"]["dz"] *1e3
         v_pipe = surface*height
         gvf = v_sphere / v_pipe
     #print(f"gvf: {gvf}")
@@ -630,7 +705,6 @@ def calculate_gvf_and_signal(config_path, npz_path, csv_path,
         input_index_list[i] = int(input_tmp_size/2500*i)
     #print(f'input_index_list: {input_index_list}')
     #print(f'if nan:{np.isnan(input_tmp).any()}')
-    input_tmp= np.abs(hilbert(input_tmp))
     input_tmp_new2 =  [input_tmp[i] for i in input_index_list]#計2500になるようにデータを取得
     input_tmp_new2 = np.array(input_tmp_new2)
     #
@@ -762,5 +836,59 @@ def rolling_window_signal(signal_input, window_size=10,
     pipe_length_second = 40e-6
     last_index = int(pipe_length_second / dt)
 
-def signal_integrate(signal_input, dt):
-    return np.sum(signal_input**2) * dt
+def detect_overlap(rawsignal_dir=None):
+    case_dirs = sorted([d for d in os.listdir(rawsignal_dir) 
+                        if os.path.isdir(os.path.join(rawsignal_dir, d)) 
+                        and d.startswith("case")])
+    for case_name in case_dirs:
+        base_dir = os.path.join(rawsignal_dir, case_name)
+        if os.path.exists(os.path.join(base_dir, 'location_seed')):
+            csv_dir = os.path.join(base_dir, 'location_seed')
+        else:
+            csv_dir = os.path.join(base_dir, 'location_seed1')
+        print(csv_dir)
+        with open(os.path.join(base_dir, 'config.json'),'r',encoding='utf-8') as f:
+            config = json.load(f)
+        Nz = config["grid"]["Nz"]
+        dz = config["grid"]["dz"]*1e3
+        inner_radius = config["pipe"]["inner_radius"]
+        glass_radius = config["simulation"]["glass_radius"]*1e3 #単位はmm
+        location_path = glob.glob(os.path.join(csv_dir, 'location*.csv'))
+        print(f'Overlap in {case_name}: \n')
+        for location_csv in location_path:
+            location_df = pl.read_csv(os.path.join(csv_dir,location_csv), 
+                                      has_header=False)
+            location_arr = location_df.to_numpy()
+            location_arr[:,0:2] *= inner_radius
+            location_arr[:,2] *= dz*Nz
+            pairwise_distances = pdist(location_arr, metric='euclidean')
+            is_all_far_enough = np.min(pairwise_distances) > 2*glass_radius
+            if not is_all_far_enough:
+                print(f'    {os.path.basename(location_csv)}')
+
+def filter_signal(filter_freq, x_raw, fs, device='cuda:0'):
+    min_freq = filter_freq[0]
+    max_freq = filter_freq[1]
+    x_size = x_raw.shape[1]
+    #print(f'x_raw shape: {x_raw.shape}')
+    x_tensor = torch.from_numpy(x_raw).float()
+    x_tensor = x_tensor.to(device)
+    Xf = torch.fft.fft(x_tensor,dim=1)
+    #print(f'Xf shape: {Xf.shape}')
+    min_freq_idx = int(x_size*min_freq/fs)
+    #print(f'min freq index: {min_freq_idx}')
+    #print(f'Xf shape: {Xf.shape}')
+    max_freq_idx = np.min([x_size*max_freq/fs, x_size//2-1])
+    max_freq_idx = int(max_freq_idx)
+    if min_freq_idx!=0 or max_freq_idx<x_size//2:
+        #print(f'max freq index: {max_freq_idx}')
+        Xf = torch.fft.fft(x_tensor,dim=1)
+        Xf[:,0:min_freq_idx]=0
+        Xf[:,max_freq_idx:x_size//2]=0
+        #print(f'Xf shape: {Xf.shape}')
+        x_tensor_new = torch.fft.ifft(Xf,dim=1)
+        #print(f'x_tensor_new shape: {x_tensor_new.shape}')
+        x_tensor_new = torch.real(x_tensor_new)
+        return x_tensor_new.cpu().numpy()
+    else:
+        return x_raw

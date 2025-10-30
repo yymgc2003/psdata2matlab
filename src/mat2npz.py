@@ -108,9 +108,10 @@ def arrange_trigger_points(trigger_points, window_width, signal_chunk, fs):
     signal_chunk = np.squeeze(signal_chunk)  # Remove all size-1 dimensions from signal_chunk
     #print(f"trigger_points.shape: {trigger_points.shape}")  # Check shape after flattening
     #print(f"signal_chunk.shape(after): {signal_chunk.shape}")  # Check shape after squeezing
+    print(f"window width: {window_width}")
     window_samples = int(window_width * fs)
     triggered_pulses = []
-    #print(f"window_samples: {window_samples}")
+    print(f"window_samples: {window_samples}")
     #print(len(signal_chunk))
     #print(trigger_points)
     signal_chunk_tmp=signal_chunk.copy()
@@ -118,17 +119,19 @@ def arrange_trigger_points(trigger_points, window_width, signal_chunk, fs):
         if trigger + window_samples <= len(signal_chunk_tmp):
             pulse = signal_chunk_tmp[trigger:trigger + window_samples]
             triggered_pulses.append(pulse)
+            #print(f'pulse.shape:{pulse.shape}')
         else:
             pulse = signal_chunk_tmp[trigger:]
-            triggered_pulses.append(pulse)
+            #triggered_pulses.append(pulse)
+            #print(f'pulse.shape:{pulse.shape}')
     triggered_pulses = np.array(triggered_pulses)
     #print(f"triggered_pulses.shape: {triggered_pulses.shape}")
     #print(triggered_pulses[1,3000])
     #print(f"triggered_pulses.shape: {triggered_pulses.shape}")
     return triggered_pulses
-def convert_exp(file_path,start_time,duration,amplitude_threshold,window_width,signal_key):
-    amplitude_threshold = 2  # Amplitude threshold
-    window_width = 0.1e-3  
+def convert_exp(file_path,start_time,duration,amplitude_threshold,
+                window_width,num_samples_per_pulse,signal_key):
+    amplitude_threshold = 2  # Amplitude threshold  
     signal_key = "TDX1"
     triggers, signal_chunk, fs = detect_triggers_from_signal(
         file_path=file_path,
@@ -155,13 +158,13 @@ def convert_exp(file_path,start_time,duration,amplitude_threshold,window_width,s
         mat_data['TDX1'] = np.nan_to_num(mat_data['TDX1'], nan=0.0)
     #print(f"max: {np.max(mat_data['TDX1'])}")
     #print(f"min: {np.min(mat_data['TDX1'])}")
-    arranged_pulses_tdx1 = arrange_trigger_points(triggers, window_width, mat_data['TDX1'], fs)
+    arranged_pulses_tdx1 = arrange_trigger_points(triggers, window_width, mat_data['TDX1'],fs)
     #print(f"arranged_pulses_tdx1.shape: {arranged_pulses_tdx1.shape}")
     arranged_pulses_tdx2 = arrange_trigger_points(triggers, window_width, mat_data['TDX2'], fs)
     #print(f"arranged_pulses_tdx2.shape: {arranged_pulses_tdx2.shape}")  
-    arranged_pulses_tdx3 = arrange_trigger_points(triggers, window_width, mat_data['TDX3'], fs)
+    arranged_pulses_tdx3 = arrange_trigger_points(triggers, window_width, mat_data['TDX3'],fs)
     #print(f"arranged_pulses_tdx3.shape: {arranged_pulses_tdx3.shape}")  
-    arranged_pulses_tdx1_enlarged = arrange_trigger_points(triggers, window_width, mat_data['TDX1_enlarged'], fs)
+    arranged_pulses_tdx1_enlarged = arrange_trigger_points(triggers, window_width, mat_data['TDX1_enlarged'],fs)
     #print(f"arranged_pulses_tdx1_enlarged.shape: {arranged_pulses_tdx1_enlarged.shape}")  
     arranged_pulses = np.stack((arranged_pulses_tdx1, arranged_pulses_tdx2, arranged_pulses_tdx3, arranged_pulses_tdx1_enlarged), axis=2)
     print(f"arranged_pulses.shape: {arranged_pulses.shape}")
@@ -234,7 +237,8 @@ def mat2npz_sim(file_path, config_path, output_dir):
     # [number of measurements, sensor values, sensor index, (optional) vertical vector]
     # Todo: implement scan_line function of kwave
     processed_data = sensor_data[np.newaxis, :, 15, np.newaxis]
-    processed_data=processed_data[:,50001:,:]
+    processed_data_size = processed_data.shape[1]
+    processed_data=processed_data[:,processed_data_size//2:,:]
     #processed_data=np.abs(hilbert(processed_data[:,50001:,:]))
     #processed_data=processed_data[::20]
     print(processed_data[0, :, 0].shape)  # Confirm the shape of the signal values
@@ -349,8 +353,8 @@ def mat2npz_sim_2d(file_path, config_path, output_dir):
     save_path = os.path.join(output_dir, f"{base_filename}_processed.npz")
     np.savez(save_path, **save_dict)
     print(f"Processed data and metadata saved to: {save_path}")
-    npz2png(file_path=save_path, save_path=output_dir,
-            full=False, pulse_index=0)
+    #npz2png(file_path=save_path, save_path=output_dir,
+    #        full=False, pulse_index=0)
 
     # Prepare dictionary for saving
     save_dict = {
@@ -364,11 +368,13 @@ def mat2npz_sim_2d(file_path, config_path, output_dir):
     save_path = os.path.join(output_dir, f"{base_filename}_processed.npz")
     np.savez(save_path, **save_dict)
     print(f"Processed data and metadata saved to: {save_path}")
-    npz2png(file_path=save_path, save_path=output_dir,
-            full=False, pulse_index=0)
+    #npz2png(file_path=save_path, save_path=output_dir,
+    #        full=False, pulse_index=0)
     return save_path
 
-def mat2npz_exp(file_path, output_dir, start_time=0.0, duration=5.0, amplitude_threshold=2, window_width=0.1e-3, signal_key="TDX1"):
+def mat2npz_exp(file_path, output_dir, start_time=0.0, duration=5.0, 
+                amplitude_threshold=2, window_width=0.2e-3, 
+                num_samples_per_pulse=2500, signal_key="TDX1"):
     """
     Convert experimental .mat data to .npz format and save with metadata.
 
@@ -401,11 +407,12 @@ def mat2npz_exp(file_path, output_dir, start_time=0.0, duration=5.0, amplitude_t
         duration=duration,
         amplitude_threshold=amplitude_threshold,
         window_width=window_width,
+        num_samples_per_pulse=num_samples_per_pulse,
         signal_key=signal_key
     )
     print("convert_exp finished")
     print(f"max: {np.max(raw_data)}")
-    processed_data=raw_data[100:14100,2708:,:]
+    processed_data=raw_data[100:14800,2500:,:]
     print(f"processed_data.shape: {processed_data.shape}")
     print(f"max: {np.max(processed_data)}")
     # English comment: Check for NaN values and replace them with 0 to avoid np.max returning nan
