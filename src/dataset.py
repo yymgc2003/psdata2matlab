@@ -40,6 +40,12 @@ def process_case_and_return_dataset(case_name, base_dir, csv_dir,
     t_list = []
 
     for npz_path in npz_files:
+
+        # ーーーーーー変更部分ここからーーーーー
+
+        # csv_dir : ../simulation/rawsignal/{case_name}
+        # process_case_and_return_dataset に csv_dirの変数を追加
+
         match = re.search(r"(\d+)", os.path.basename(npz_path))
         loc_idx = int(match.group(1))
         if os.path.exists(os.path.join(csv_dir,'location_seed')):
@@ -50,6 +56,9 @@ def process_case_and_return_dataset(case_name, base_dir, csv_dir,
         csv_path = os.path.join(loc_dir, f'location{loc_idx}.csv')
         print(f'csv_path:{csv_path}')
         print(f'npz_path:{npz_path}')
+
+        # ーーーーーー変更部分ここまでーーーーー
+
         # input_tmp = calculate_gvf_and_signal(config_path, npz_path, csv_path,
         #                                                  label_dim=label_dim)
         input_tmp, target_tmp = calculate_gvf_and_signal(config_path, npz_path, csv_path,

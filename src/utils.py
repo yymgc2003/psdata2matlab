@@ -670,6 +670,8 @@ def calculate_gvf_and_signal(config_path, npz_path, csv_path,
     height = (config["grid"]["Nz"]-20) * config["grid"]["dz"] *1e3
     v_pipe = surface
 
+    # ーーーーーー変更部分ここからーーーーー
+
     df = pl.read_csv(csv_path,has_header=False)
     v_sphere=0
     if label_dim==2:
@@ -690,6 +692,9 @@ def calculate_gvf_and_signal(config_path, npz_path, csv_path,
         #height = config["grid"]["Nz"] * config["grid"]["dz"] *1e3
         v_pipe = surface*height
         gvf = v_sphere / v_pipe
+
+    # ーーーーーー変更部分ここまでーーーーー
+
     #print(f"gvf: {gvf}")
 
     signal = np.load(npz_path)['processed_data']
