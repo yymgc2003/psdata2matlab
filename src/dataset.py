@@ -1,5 +1,5 @@
 from .utils import calculate_gvf_and_signal
-def process_case_and_return_dataset(case_name, base_dir):
+def process_case_and_return_dataset(case_name, base_dir, csv_dir):
     """
     Process all .npz files in the specified case directory, extract signals and GVF,
     and return the resulting datasets for machine learning.
@@ -22,6 +22,7 @@ def process_case_and_return_dataset(case_name, base_dir):
     import os
     import numpy as np
     import json
+    import re
     npz_dir = base_dir
     config_path = os.path.join(base_dir, "config.json")
     npz_files = sorted(glob.glob(os.path.join(npz_dir, "*.npz")))
@@ -30,7 +31,13 @@ def process_case_and_return_dataset(case_name, base_dir):
     t_list = []
 
     for npz_path in npz_files:
-        input_tmp, target_tmp = calculate_gvf_and_signal(config_path, npz_path)
+        match = re.search(r"(\d+)", os.path.basename(npz_path))
+        loc_idx = int(match.group(1))
+        loc_dir = os.path.join(csv_dir,"location_seed")
+        csv_path = os.path.join(loc_dir, f'location{loc_idx}.csv')
+        print(f'csv_path:{csv_path}')
+        print(f'npz_path:{npz_path}')
+        input_tmp, target_tmp = calculate_gvf_and_signal(config_path, npz_path, csv_path)
         # Apply log(1 + x) transformation element-wise to input_tmp
         #input_tmp = np.log1p(input_tmp)
         x_list.append(input_tmp)
