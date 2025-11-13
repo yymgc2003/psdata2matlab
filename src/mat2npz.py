@@ -215,17 +215,21 @@ def mat2npz_sim(file_path, config_path, output_dir):
 
     # Try to get sensor_data or fallback to z group
     with h5py.File(file_path, 'r') as g:
-        if 'sensor_data' in g:
+        print(f"keys:", g.keys())
+        # if 'sensor_data' in g:
+        if False:
             # If 'sensor_data' exists as a dataset, use it
             sensor_data = g['sensor_data'][:]
-            processed_data = sensor_data[15]
+            print(sensor_data.shape)
+            # processed_data = sensor_data[15]
             # Get all top-level keys in the file
-            keys = list(g.keys())
+            keys = list(sensor_data.keys())
             print(f"keys:", keys)
         else:
             # If 'sensor_data' does not exist, use '#refs#/z' group
             z_group = g['#refs#/z']
             keys = list(z_group.keys())
+            print(f"keys:", keys)
             key_15 = keys[15] if len(keys) > 15 else keys[0]
             print(f"key_15:", key_15)
             processed_data = z_group[key_15][:]
