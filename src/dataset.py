@@ -34,7 +34,7 @@ def process_case_and_return_dataset(case_name, base_dir, csv_dir,
     import re
     from matplotlib import pyplot as plt
     config_path = os.path.join(base_dir, "config.json")
-    npz_files = sorted(glob.glob(os.path.join(base_dir, "*reflector*.npz")))
+    npz_files = sorted(glob.glob(os.path.join(base_dir, "*.npz")))
     print(npz_files)
     x_list = []
     t_list = []
@@ -162,7 +162,7 @@ def process_case_and_png(case_name, base_dir, csv_dir,
         #                                                  label_dim=label_dim)
         npz_dict = np.load(npz_path)
         input_tmp = npz_dict["processed_data"][0,:,0]
-        raw_tmp = npz_dict["processed_data"][0,:,0]
+        raw_tmp = input_tmp.copy()
         fs = npz_dict["fs"]
         print(f'fs: {fs}')
         input_tmp_size = np.shape(input_tmp)[0]
@@ -175,17 +175,18 @@ def process_case_and_png(case_name, base_dir, csv_dir,
         input_tmp_new2 = np.array(input_tmp_new2)
         input_tmp = input_tmp_new2
         #raw_tmp = raw_tmp/np.max(raw_tmp)
-        # Apply rolling window
-        if rolling_window:
-            s =pl.Series(input_tmp)
-            rolling_max = s.rolling_max(window_size=window_size)[window_size-1:]
-            #print(f'rolling max 0: {rolling_max[:12]}')
-            input_tmp = rolling_max.gather_every(window_stride).to_numpy()
         # Apply log(1 + x) transformation element-wise to input_tmp
         #print(f'input_tmp b4 log1p: {input_tmp}')
         print(f'input tmp shape{input_tmp.shape}')
         if if_hilbert:
             input_tmp= np.abs(hilbert(input_tmp))
+        # Apply rolling window
+        if rolling_window:
+            s =pl.Series(input_tmp)
+            rolling_min = s.rolling_min(window_size=window_size,
+                                        min_periods=1)
+            #print(f'rolling max 0: {rolling_max[:12]}')
+            input_tmp = rolling_min.to_numpy()
         input_tmp = input_tmp/np.max(input_tmp)
         if log1p:
             input_tmp = np.log1p(input_tmp)
@@ -202,6 +203,8 @@ def process_case_and_png(case_name, base_dir, csv_dir,
         plt.rcParams["font.size"] = 18
         plt.plot(t*1e6, input_tmp, color='blue', label='Processed Signal')
         plt.legend()
+        plt.xlim(0,50)
+        plt.ylim(0,np.max(input_tmp))
         plt.xlabel('Time (μs)')
         plt.ylabel('Amplitude')
         plt.tight_layout()
@@ -214,12 +217,19 @@ def process_case_and_png(case_name, base_dir, csv_dir,
         plt.close()
 
         len1 = len(raw_tmp)
+        env = np.abs(hilbert(raw_tmp))
 
         t=np.arange(0e-6,50e-6,50e-6/len(raw_tmp))
+        t = t+50e-6
+        len_plt= np.min([len(t), len(raw_tmp)])
         plt.figure(figsize=(10, 4))
         plt.rcParams["font.size"] = 18
-        plt.plot(t*1e6, raw_tmp*1e-3, color='blue', label='Raw Signal')
+        plt.plot(t[:len_plt]*1e6, raw_tmp[:len_plt]*1e-3, color='blue', label='Raw Signal')
+        plt.plot(t[:len_plt]*1e6, env[:len_plt]*1e-3, color='red', label='Envelope')
         plt.legend()
+        plt.xlim(70,80)
+        plt.ylim(-0.5, 0.5)
+        plt.grid(True)
         plt.xlabel('Time (μs)')
         plt.ylabel('Amplitude (kPa)')
         plt.tight_layout()
@@ -231,30 +241,33 @@ def process_case_and_png(case_name, base_dir, csv_dir,
         plt.savefig(new_save_path)
         plt.close()
 
-        input_tensor = torch.from_numpy(raw_tmp).float()
+        len_raw = raw_tmp.shape[0]
+        start_idx = int(len_raw*8/50)
+        input_tensor = torch.from_numpy(raw_tmp[start_idx:]).float()
         input_tensor = input_tensor.to(device)
 
         Xf = torch.fft.fft(input_tensor)
         Xf = torch.abs(Xf)
-        Xf = torch.pow(Xf, 2)
+        # Xf = torch.pow(Xf, 2)
         Xf = Xf.cpu().numpy()
         print(f'Xf: {Xf[200]}')
-        Xf = Xf[:len(raw_tmp)//2]
-        Xf = Xf/len(Xf)/fs/2
-        freq = np.arange(0,25e6,1/50e-6)
+        Xf = Xf/len(Xf)
+        freq = np.arange(0,25e6,1/42e-6)
 
         plt.figure(figsize=(10, 4))
         plt.rcParams["font.size"] = 18
         plt.plot(freq*1e-6, Xf[0:len(freq)], color='blue', label='FFT')
-        plt.axvline(x=4, color='r',linestyle='--', linewidth=1.5, label='4 MHz')
-        label_text = '4 MHz'
-        plt.text(plt.xlim()[1]*0.145, plt.ylim()[1]*1.1,label_text, 
-         color='r', 
-         fontsize=18,
-         rotation=0,         # テキストの回転 (90度にすると縦書きになる)
-         ha='left',          # Horizontal Alignment: 左寄せ
-         va='top'            # Vertical Alignment: 上端合わせ
-        )
+        # plt.axvline(x=4, color='r',linestyle='--', linewidth=1.5, label='4 MHz')
+        # label_text = '4 MHz'
+        # plt.text(plt.xlim()[1]*0.145, plt.ylim()[1]*1.1,label_text, 
+        #  color='r', 
+        #  fontsize=18,
+        #  rotation=0,         # テキストの回転 (90度にすると縦書きになる)
+        #  ha='left',          # Horizontal Alignment: 左寄せ
+        #  va='top'            # Vertical Alignment: 上端合わせ
+        # )
+        plt.xlim(0,25)
+        plt.ylim(0,np.max(Xf))
         plt.legend()
         plt.xlabel('Frequency (MHz)')
         plt.ylabel('Amplitude')
@@ -262,7 +275,7 @@ def process_case_and_png(case_name, base_dir, csv_dir,
         import os
         #base_name = os.path.splitext(os.path.basename(file_path))[0]
         #save_path = os.path.join(base_dir, 'graph')
-        new_save_path = os.path.join(base_dir, f"{case_name}_{png_name}{loc_idx}_fft.png")
+        new_save_path = os.path.join(base_dir, f"{case_name}_raw{loc_idx}_fft.png")
         print(new_save_path)
         plt.savefig(new_save_path)
         plt.close()

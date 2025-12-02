@@ -670,7 +670,7 @@ def calculate_gvf_and_signal(config_path, npz_path, csv_path,
     height = (config["grid"]["Nz"]-20) * config["grid"]["dz"] *1e3
     v_pipe = surface
 
-    df = pl.read_csv(csv_path,has_header=False)
+    # df = pl.read_csv(csv_path,has_header=False)
     v_sphere=0
     if label_dim==2:
         for i in range(num):
@@ -683,13 +683,13 @@ def calculate_gvf_and_signal(config_path, npz_path, csv_path,
 
     # ーーーーーー変更部分ここからーーーーー
         
-        loc_arr = df.to_numpy()
-        loc_arr[:,0:2] *= r_pipe
-        loc_arr[:,2] *= height
-        dist_arr = pdist(loc_arr, metric='euclidean')
-        for dist in dist_arr:
-            if dist < 2*r_ball:
-                v_sphere -= 2*math.pi*(2/3*r_ball**3-r_ball**2*dist/2+1/3*(dist/2)**3)
+        # loc_arr = df.to_numpy()
+        # loc_arr[:,0:2] *= r_pipe
+        # loc_arr[:,2] *= height
+        # dist_arr = pdist(loc_arr, metric='euclidean')
+        # for dist in dist_arr:
+        #     if dist < 2*r_ball:
+        #         v_sphere -= 2*math.pi*(2/3*r_ball**3-r_ball**2*dist/2+1/3*(dist/2)**3)
         #height = config["grid"]["Nz"] * config["grid"]["dz"] *1e3
         v_pipe = surface*height
         gvf = v_sphere / v_pipe

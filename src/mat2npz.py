@@ -215,19 +215,19 @@ def mat2npz_sim(file_path, config_path, output_dir):
 
     # Try to get sensor_data or fallback to z group
     with h5py.File(file_path, 'r') as g:
+        keys = g.keys()
         print(f"keys:", g.keys())
-        # if 'sensor_data' in g:
-        if False:
+        if 'sensor_data' in g:
             # If 'sensor_data' exists as a dataset, use it
             sensor_data = g['sensor_data'][:]
             print(sensor_data.shape)
             # processed_data = sensor_data[15]
             # Get all top-level keys in the file
-            keys = list(sensor_data.keys())
-            print(f"keys:", keys)
+            # keys = list(sensor_data.keys())
+            # print(f"keys:", keys)
         else:
             # If 'sensor_data' does not exist, use '#refs#/z' group
-            z_group = g['#refs#/z']
+            z_group = g['#refs#']
             keys = list(z_group.keys())
             print(f"keys:", keys)
             key_15 = keys[15] if len(keys) > 15 else keys[0]
@@ -235,14 +235,17 @@ def mat2npz_sim(file_path, config_path, output_dir):
             processed_data = z_group[key_15][:]
             # Collect all datasets in z_group as a list
             sensor_data = [z_group[k][:] for k in keys]
+        keys = list(keys)
 
-    print(keys)
+    # print(keys)
     # Reshape processed_data to [1, :, 1] for consistency
     # [number of measurements, sensor values, sensor index, (optional) vertical vector]
     # Todo: implement scan_line function of kwave
-    processed_data = sensor_data[np.newaxis, :, 15, np.newaxis]
+    # sensor_data = np.mean(sensor_data,axis=1)
+    processed_data = sensor_data[np.newaxis, :, 50, np.newaxis]
     processed_data_size = processed_data.shape[1]
     processed_data=processed_data[:,processed_data_size//2:,:]
+    processed_data=np.array(processed_data)
     #processed_data=np.abs(hilbert(processed_data[:,50001:,:]))
     #processed_data=processed_data[::20]
     print(processed_data[0, :, 0].shape)  # Confirm the shape of the signal values
